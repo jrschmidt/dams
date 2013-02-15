@@ -17,6 +17,7 @@ get '/javascripts/dams.js' do
 end
 
 
+
 module TerrainHelper
 
 
@@ -38,7 +39,7 @@ module TerrainHelper
       else
         a = hex[:a]
         b = hex[:b]
-        z = :bad if a == nil || a<0 || a>HEX_DIM_EW || b == nil || b<0 || b>HEX_DIM_NS
+        z = :bad if (a == nil || a<0 || a>HEX_DIM_EW || b == nil || b<0 || b>HEX_DIM_NS)
       end
       put_ab(a,b,value) if (z == :good)
     end
@@ -152,6 +153,7 @@ module TerrainHelper
 #   next. End a branch when a blocked hex is reached.
 
   RV_DIR_INIT = :dir_N
+  RV_BRANCH_ID_INIT = :br_000
   RV_SEGMENTS_TO_BRANCH = 1..3
   RV_SEGMENT_SIZE = 1..3
 
@@ -167,7 +169,7 @@ module TerrainHelper
 
   def build_terrain
     @map = HexGrid.new
-    @map.fill(:elev_10)
+    @map.fill(:elev_60)
     @rivers = build_rivers
     @map.add_data(@rivers,:rivers)
     @map.get_map
@@ -177,30 +179,34 @@ module TerrainHelper
     @rivers = HexGrid.new
     @rivers.fill(:no_data)
 
-      # mark blocked edge hexes
-    0.upto(HEX_DIM_NS) {|b| @rivers.put_ab(0,b,:blocked)}
-    0.upto(HEX_DIM_NS) {|b| @rivers.put_ab(HEX_DIM_EW,b,:blocked)}
-    0.upto(HEX_DIM_EW) {|a| @rivers.put_ab(a,0,:blocked)}
-    0.upto(HEX_DIM_EW) {|a| @rivers.put_ab(a,HEX_DIM_NS,:blocked)}
+    # mark blocked edge hexes
+    0.upto(HEX_DIM_NS) {|b| river_block_ab(0,b)}
+    0.upto(HEX_DIM_NS) {|b| river_block_ab(HEX_DIM_EW,b)}
+    0.upto(HEX_DIM_EW) {|a| river_block_ab(a,0)}
+    0.upto(HEX_DIM_EW) {|a| river_block_ab(a,HEX_DIM_NS)}
 
-      #pick river starting point
+    #pick river starting point
     mouth = {:a=>pick_river_mouth,:b=>HEX_DIM_NS}
     @rivers.put(mouth,:water)
+    first_ext = next_hex(mouth,:dir_N)
+    first_ext[:dir] = :dir_N
 
     segments_until_next_branch_point = 0
+    @new_branch_id_symbol = RV_BRANCH_ID_INIT
     @branches_pending = []
-    add_pending_branch(mouth,:dir_N)
+    add_extension(first_ext)
 
 
+    # cycle randomly through the queue of uncompleted branches until
+    # the list is empty
     until @branches_pending == []
-      binding.pry
+
       # randomly pick next branch to extend from pending extensions
-      pointer = array_pick_random(@branches_pending,:equal_weight)
-      direction = pointer[:dir]
+      branch_head = array_pick_random(@branches_pending,:equal_weight)
 
       # if starting from a branch point, pick number of segments to next
       # branch point
-      if (segments_until_next_branch_point == 0)
+      if segments_until_next_branch_point == 0
         is_branch_point = true
         segments_until_next_branch_point = int_random(1,3,:equal_weight)
       else
@@ -212,19 +218,25 @@ module TerrainHelper
       hexes_in_segment = int_random(1,3,:equal_weight)
 
       # get the hexes for this segment
-      segment = []
-      hexes_in_segment.times {segment << next_hex(pointer,direction)}
+      h = branch_head
+      direction = branch_head[:dir]
+      segment = [h]
+      (hexes_in_segment-1).times do
+        hex = next_hex(h,direction)
+        segment << hex
+        h = hex
+      end
       segment.compact!
 
       # check to see if the hexes are blocked
       end_branch = false
-      segment.each {|hex| end_branch = true if not_allowed(hex,:extend_river)}
+      segment.each {|hex| end_branch = true if river_not_allowed(hex)}
 
       # terminate the branch if this is the end
       if end_branch
-        @rivers.put(next_hex(pointer,direction),:blocked)
-        @rivers.put(go_left(pointer,direction),:blocked)
-        @rivers.put(go_right(pointer,direction),:blocked)
+        river_block(next_hex(branch_head,direction))
+        river_block(go_left(branch_head,direction))
+        river_block(go_right(branch_head,direction))
 
       # extend the branch if not the end
       else
@@ -234,62 +246,58 @@ module TerrainHelper
 
           # if not last hex in this segment
           if segment.length > 0
-            @rivers.put(go_left(pointer,direction),:blocked)
-            @rivers.put(go_right(pointer,direction),:blocked)
+            river_block(go_left(pointer,direction))
+            river_block(go_right(pointer,direction))
 
           # if last hex in this segment
           else
 
-            # end of segment is branch point
+            # if end of segment is branch point
             if is_branch_point
-              @rivers.put(next_hex(pointer,direction),:blocked)
+              river_block(next_hex(pointer,direction))
               ext_lft = go_left(pointer,direction)
-              end_branch = true if (@rivers.get(ext_lft) == :blocked)
+              end_branch = true if river_not_allowed(ext_lft)
               ext_rt = go_right(pointer,direction)
-              end_branch = true if (@rivers.get(ext_rt) == :blocked)
+              end_branch = true if  river_not_allowed(ext_rt)
 
               # if branch is blocked
               if end_branch
-                @rivers.put(ext_lft,:blocked)
-                @rivers.put(ext_rt,:blocked)
+                river_block(ext_lft)
+                river_block(ext_rt)
 
               # if branch is not blocked
               else
-                @rivers.put(ext_lft,:extension_point)
-                @rivers.put(ext_rt,:extension_point)
-                add_pending_branch(pointer,left(direction))
-                add_pending_branch(pointer,right(direction))
+                add_extension(ext_lft)
+                add_extension(ext_rt)
               end
 
-            # end of segment is not branch point
+            # if end of segment is not branch point
             else
-              @rivers.put(next_hex(pointer,direction),:blocked)
+              river_block(next_hex(pointer,direction))
               ext_lft = go_left(pointer,direction)
               ext_rt = go_right(pointer,direction)
               next_dir = array_pick_random([:left,:right],:equal_weight)
               case next_dir
               when :left
-                @rivers.put(ext_rt,:blocked)
-                end_branch = true if (@rivers.get(ext_lft) == :blocked)
+                end_branch = true if river_not_allowed(ext_lft)
               when :right
-                @rivers.put(ext_lft,:blocked)
-                end_branch = true if (@rivers.get(ext_rt) == :blocked)
+                end_branch = true if river_not_allowed(ext_rt)
               end
 
               # if branch is blocked
               if end_branch
-                @rivers.put(ext_lft,:blocked)
-                @rivers.put(ext_rt,:blocked)
+                river_block(ext_lft)
+                river_block(ext_rt)
 
               # if branch is not blocked
               else
                 case next_dir
                 when :left
-                  @rivers.put(ext_lft,:extension_point)
-                  add_pending_branch(pointer,left(direction))
+                  river_block(ext_rt)
+                  add_extension(ext_lft)
                 when :right
-                  @rivers.put(ext_rt,:extension_point)
-                  add_pending_branch(pointer,right(direction))
+                  river_block(ext_lft)
+                  add_extension(ext_rt)
                 end
 
               end
@@ -301,7 +309,6 @@ module TerrainHelper
         end
 
       end
-
 
     end
 
@@ -324,20 +331,39 @@ module TerrainHelper
   end
 
 
-  def add_pending_branch(hex,dir)
-    @branches_pending << {:a=>hex[:a],:b=>hex[:b],:dir=>dir} if hex != nil
+  def  add_extension(ext)
+    if ext != nil
+      id = @new_branch_id_symbol
+      @new_branch_id_symbol = @new_branch_id_symbol.succ
+      branch = ext
+      branch[:id] = id
+      @rivers.put(branch,id)
+      @branches_pending << branch
+    end
   end
 
 
-  def not_allowed(hex,mode)
-    case mode
-    when :extend_river
-      bad = false
-      bad = true if hex == nil
-      bad = true if @rivers.get(hex) == :blocked
+  def river_not_allowed(hex)
+    if hex == nil
+      bad = true
+    else
+      mark = @rivers.get(hex)
+      bad = true
+      bad = false if mark == :no_data
+      bad = false if mark == hex[:id]
     end
-    puts ("Blocked at #{hex}") if @rivers.get(hex) == :blocked
     bad
+  end
+
+
+  def river_block(hex)
+    @rivers.put(hex,:blocked) if @rivers.get(hex) != :water
+  end
+
+
+  def river_block_ab(a,b)
+    hex = {:a=>a,:b=>b}
+    river_block(hex)
   end
 
 
@@ -345,7 +371,9 @@ module TerrainHelper
     if dir == nil
       lft = nil
     else
-      lft = next_hex(hex,left(dir))
+      dir2 = left(dir)
+      lft = next_hex(hex,dir2)
+      lft[:dir] = dir2
     end
     lft
   end
@@ -355,7 +383,9 @@ module TerrainHelper
     if dir == nil
       rt = nil
     else
-      rt = next_hex(hex,right(dir))
+      dir2 = right(dir)
+      rt = next_hex(hex,dir2)
+      rt[:dir] = dir2
     end
     rt
   end
@@ -458,7 +488,6 @@ module TerrainHelper
   # DOM, where it can be accessed by the javascript/coffeescript for display.
   def terrain_string
     str = ""
-    binding.pry
     @terrain = build_terrain
     @terrain.each do |t|
       t.each do |hex|
