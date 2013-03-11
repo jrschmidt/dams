@@ -5,8 +5,10 @@ class DamsApp
   constructor: () ->
 
     @terrain = new Terrain(this)
-    @view = new View()
-    @view.render(@terrain.data)
+    @damsview = new DamsView()
+    @damsview.render(@terrain.data)
+
+    @topo = new TopoDiagram()
 
 
 
@@ -82,7 +84,7 @@ class DataSource
 
 
 
-class View
+class DamsView
 
   constructor: () ->
 
@@ -160,6 +162,90 @@ class ElevationPalette
       else
         color = @elevationcolors["no-data"]
       return color
+
+
+
+class TopoDiagram
+
+  constructor: () ->
+
+    @tdata = new TData(this)
+    @topoview = new TopoView()
+    m = @tdata.m
+    n = @tdata.n
+    @topostring = @tdata.topostring
+    @topoview.render(m,n,@topostring)
+
+
+
+class TData
+
+  constructor: () ->
+
+    @canvas = document.getElementById("topo-grid")
+    @m = @canvas.getAttribute("data-m")
+    @n = @canvas.getAttribute("data-n")
+    @topostring = @canvas.getAttribute("data-topo")
+
+
+
+class TopoView
+
+  constructor: () ->
+    @canvas = document.getElementById("topo-grid")
+    @context = @canvas.getContext("2d")
+
+
+  render: (m,n,dstring) ->
+    for k in [0..n-1]
+      for j in [0..m-1]
+        @drawcell(j,k)
+        z = 4*(j+k*m)
+        d4 = dstring[z..z+3]
+        @connect(j,k,"N") if d4[0] == "c"
+        @connect(j,k,"E") if d4[1] == "c"
+        @connect(j,k,"S") if d4[2] == "c"
+        @connect(j,k,"W") if d4[3] == "c"
+
+
+  drawcell: (m,n) ->
+    @canvas = document.getElementById("topo-grid")
+    @context = @canvas.getContext("2d")
+
+    @context.fillStyle = "#339933"
+    x1 = 10+40*m
+    y1 = 10+40*n
+    @context.fillRect(x1,y1,20,20)
+
+    label = (m+1).toString()+" , "+(n+1).toString()
+    @context.fillStyle = "#000000"
+    @context.textAlign = "center"
+    x2 = x1+10
+    y2 = y1+10
+    @context.fillText(label,x2,y2)
+
+
+  connect: (m,n,dir) ->
+    @canvas = document.getElementById("topo-grid")
+    @context = @canvas.getContext("2d")
+    @context.strokeStyle = "#666666"
+    @context.lineWidth = 3
+    switch dir
+      when "N"
+        @connect(m,n-1,"S")
+      when "W"
+        @connect(m-1,n,"E")
+      when "S"
+        x1 = 20+m*40
+        y1 = 30+n*40
+        @context.moveTo(x1,y1)
+        @context.lineTo(x1,y1+20)
+      when "E"
+        x1 = 30+m*40
+        y1 = 20+n*40
+        @context.moveTo(x1,y1)
+        @context.lineTo(x1+20,y1)
+    @context.stroke()
 
 
 

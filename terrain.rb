@@ -17,6 +17,185 @@ get '/javascripts/dams.js' do
 end
 
 
+get '/javascripts/topodraw.js' do
+  coffee :topodraw
+end
+
+
+
+module RiverTopoGrid
+
+
+  def get_m
+    @m = 5
+  end
+
+
+  def get_n
+    @n = 3
+  end
+
+
+  def make_topo_grid
+    # grid size = @m x @n
+    @m = 5
+    @n = 3
+
+    @compass = [:N,:E,:S,:W]
+    @t_grid = [nil]
+    1.upto(@m) do |j|
+      cc = [nil]
+      1.upto(@n) do |k|
+        zz = {:x=>j,:y=>k,:N=>:blank,:E=>:blank,:S=>:blank,:W=>:blank}
+        cc << zz
+      end
+      @t_grid[j] = cc
+    end
+
+    # block edges
+    1.upto(@m) {|j| set_grid(j,1,:N,:blocked)}
+    1.upto(@n) {|k| set_grid(1,k,:W,:blocked)}
+    1.upto(@n) {|k| set_grid(@m,k,:E,:blocked)}
+
+    # set mouth
+    mouth = 2+rand(@m-2)
+    set_grid(mouth,@n,:S,:connect)
+
+    # build first segment with "mouth" cell as root
+    @root = 0
+    set_grid(mouth,@n,:seg,@root)
+    @root_x = mouth
+    @root_y = @n
+    root_node = {:x=>@root_x,:y=>@root_y}
+    @tree = [root_node]
+    @segments = []
+    @segments[@root] = @tree
+
+    # set rest of bottom row to :blocked
+    1.upto(@m) {|j| set_grid(j,@n,:S,:blocked) if j != mouth}
+
+    # build list of available connections
+    @open_list = []
+    1.upto(@m-1) do |x|
+      1.upto(@n) do |y|
+        ct = {:x1=>x,:y1=>y,:dir1=>:E,:x2=>x+1,:y2=>y,:dir2=>:W}
+        @open_list << ct
+      end
+    end
+    1.upto(@m) do |x|
+      1.upto(@n-1) do |y|
+        ct = {:x1=>x,:y1=>y,:dir1=>:S,:x2=>x,:y2=>y+1,:dir2=>:N}
+        @open_list << ct
+      end
+    end
+
+    # iterate through connections until empty
+    until @open_list == []
+      @open_list.shuffle!
+      connection = @open_list.pop
+      a1 = connection[:x1]
+      b1 = connection[:y1]
+      seg1 = @t_grid[a1][b1][:seg]
+
+      dir1 = connection[:dir1]
+      a2 = connection[:x2]
+      b2 = connection[:y2]
+      dir2 = connection[:dir2]
+      seg2 = @t_grid[a2][b2][:seg]
+
+      # determine if cells in new connections
+      # are already part of segments
+      if seg1 == nil
+        if seg2 == nil
+          status = :new_seg
+        else
+          status = :add_c1_to_seg2
+        end
+      else # (seg1 != nil)
+        if seg2 == nil
+          status = :add_c2_to_seg1
+        elsif seg1 != seg2
+          status = :join_segs
+        else
+          status = :no_connect
+        end
+      end
+
+      case status
+
+      when :new_seg
+        seg = @segments.length
+        set_grid(a1,b1,:seg,seg)
+        set_grid(a2,b2,:seg,seg)
+        br = [ {:x=>a1,:y=>b1},{:x=>a2,:y=>b2} ]
+        @segments << br
+      when :add_c1_to_seg2
+        set_grid(a1,b1,:seg,seg2)
+        br = @segments[seg2]
+        cc = {:x=>a1,:y=>b1}
+        br << cc
+        @segments[seg2] = br
+      when :add_c2_to_seg1
+        set_grid(a2,b2,:seg,seg1)
+        br = @segments[seg1]
+        cc = {:x=>a2,:y=>b2}
+        br << cc
+        @segments[seg1] = br
+      when :join_segs
+        seg = [seg1,seg2].min
+        segx = [seg1,seg2].max
+        brx = @segments[segx]
+        brx.each do |cc|
+          set_grid(cc[:x],cc[:y],:seg,seg)
+          cc[:seg] = seg
+        end
+        combo = @segments[seg1]+@segments[seg2]
+        @segments[seg] = combo
+        @segments[segx] = []
+      when :no_connect
+
+      end
+
+      if status != :no_connect
+        set_grid(a1,b1,dir1,:connect)
+        set_grid(a2,b2,dir2,:connect)
+      end
+    end
+
+  end
+
+
+  def set_grid(j,k,key,value)
+    cell = @t_grid[j][k]
+    cell[key] = value if cell.class == Hash
+    @t_grid[j][k] = cell
+  end
+
+
+  def RiverTopoGrid::topo_string
+    make_topo_grid
+    str = ""
+    1.upto(@n) do |k|
+      1.upto(@m) do |j|
+        cell = @t_grid[j][k]
+        @compass.each do |dir|
+          sym = cell[dir] if cell.respond_to? :[]
+          if sym == :connect
+            ch = "c"
+          else
+            ch = "x"
+          end
+          str << ch
+        end
+      end
+    end
+    str
+  end
+
+
+end
+
+
 
 module TerrainHelper
 
@@ -540,5 +719,14 @@ end
 
 
 helpers TerrainHelper
+
+include RiverTopoGrid
+
+
+def topo_string
+  str = RiverTopoGrid.topo_string
+  str
+end
+
 
 
