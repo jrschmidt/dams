@@ -17,11 +17,6 @@ get '/javascripts/dams.js' do
 end
 
 
-get '/javascripts/topodraw.js' do
-  coffee :topodraw
-end
-
-
 
 module RiverTopoGrid
 
@@ -172,8 +167,8 @@ module RiverTopoGrid
   end
 
 
-  def RiverTopoGrid::topo_string
-    make_topo_grid
+  def topo_string
+    make_topo_grid if @t_grid == nil
     str = ""
     1.upto(@n) do |k|
       1.upto(@m) do |j|
@@ -305,45 +300,91 @@ module TerrainHelper
 
 #   Heuristics Used For This Version:
 #   (with their constants)
+  RT_ZONE_WIDTH = 8
+  RT_ZONE_HEIGHT = 8
 
-#   Options designated in this format: {1,2,3} are given equal weight unless
-#   otherwise specified. 
 
-#   River mouth:
+# River Branch Connector Templates:
+  CX_TEMPLATES = {
+    :cx_stub_n => [{:src=>:origin,:dir=>:no_go,:id=>:N}],
+    :cx_stub_e => [{:src=>:origin,:dir=>:no_go,:id=>:E}],
+    :cx_stub_s => [{:src=>:origin,:dir=>:no_go,:id=>:S}],
+    :cx_stub_w => [{:src=>:origin,:dir=>:no_go,:id=>:W}],
 
-#   [OPTION 1]
-#   Equal weight for values {"low",12,14,16,18,20,22,24,26,28,"high"}.
-#   If "low", then equal weight for {6,8,10}; if "high", then equal weight
-#   for {30,32,34}.
- 
-  RV_MOUTH_SPREAD = 11
-  RV_MOUTH_LO = 6
-  RV_MOUTH_HI = 28
-  RV_MOUTH_MID = 10
+    :cx_vert => [{:src=>:origin,:dir=>:no_go,:id=>:N},
+                {:src=>0,:dir=>:S,:id=>:S}],
 
-#   River extend:
+    :cx_hrz_a => [{:src=>:origin,:dir=>:S,:id=>:W},
+                 {:src=>0,:dir=>:NE,:id=>:E}],
 
-#   [OPTION 1]
-#   Initial direction is {North}. Pick {1,2,3} segments until next branch point. For each
-#   segment, go {1,2,3} hexes in current direction. If branch point, make
-#   Y-shaped branch and continue both branches. If not a branch point, pick
-#   next direction {L,R}. Process all segments from all branches simultaneously, one
-#   segment at a time. After each segment, randomly choose which branch to extend
-#   next. End a branch when a blocked hex is reached.
+    :cx_hrz_b => [{:src=>:origin,:dir=>:no_go,:id=>:W},
+                {:src=>0,:dir=>:SE,:id=>:E}],
 
-  RV_DIR_INIT = :dir_N
-  RV_BRANCH_ID_INIT = :br_000
-  RV_SEGMENTS_TO_BRANCH = 1..3
-  RV_SEGMENT_SIZE = 1..3
+    :cx_n_e => [{:src=>:origin,:dir=>:no_go,:id=>:N},
+               {:src=>0,:dir=>:S,:id=>nil},
+               {:src=>1,:dir=>:SE,:id=>:E}],
 
-#   River block
+    :cx_s_e => [{:src=>:origin,:dir=>:SE,:id=>:E},
+               {:src=>0,:dir=>:SW,:id=>nil},
+               {:src=>1,:dir=>:S,:id=>:S}],
 
-#   {OPTION 1]
-#   Mark hexes as blocked for further river extensions if they are one hex
-#   away from edge or another river.
+    :cx_s_w => [{:src=>:origin,:dir=>:no_go,:id=>:W},
+               {:src=>0,:dir=>:SE,:id=>nil},
+               {:src=>1,:dir=>:S,:id=>:S}],
 
-  RV_EDGE_MARGIN = 1
+    :cx_n_w => [{:src=>:origin,:dir=>:SE,:id=>:N},
+               {:src=>0,:dir=>:S,:id=>nil},
+               {:src=>1,:dir=>:SW,:id=>:W}],
 
+    :cx_dn => [{:src=>:origin,:dir=>:no_go,:id=>:W},
+              {:src=>0,:dir=>:SE,:id=>nil},
+              {:src=>1,:dir=>:S,:id=>:S},
+              {:src=>1,:dir=>:NE,:id=>:E}],
+
+    :cx_up => [{:src=>:origin,:dir=>:SE,:id=>:N},
+              {:src=>0,:dir=>:S,:id=>nil},
+              {:src=>1,:dir=>:SW,:id=>:W},
+              {:src=>1,:dir=>:SE,:id=>:E}],
+
+    :cx_rt_a => [{:src=>:origin,:dir=>:no_go,:id=>:N},
+                {:src=>0,:dir=>:S,:id=>nil},
+                {:src=>1,:dir=>:SE,:id=>nil},
+                {:src=>2,:dir=>:S,:id=>:S},
+                {:src=>2,:dir=>:NE,:id=>:E}],
+
+    :cx_rt_b => [{:src=>:origin,:dir=>:SE,:id=>:N},
+                {:src=>0,:dir=>:S,:id=>nil},
+                {:src=>1,:dir=>:SE,:id=>:E},
+                {:src=>1,:dir=>:SW,:id=>nil},
+                {:src=>3,:dir=>:S,:id=>:S}],
+
+    :cx_lft_a => [{:src=>:origin,:dir=>:S,:id=>:W},
+                 {:src=>0,:dir=>:SE,:id=>nil},
+                 {:src=>1,:dir=>:S,:id=>:S},
+                 {:src=>1,:dir=>:NE,:id=>nil},
+                 {:src=>3,:dir=>:N,:id=>:N}],
+
+    :cx_lft_b => [{:src=>:origin,:dir=>:SE,:id=>:N},
+                 {:src=>0,:dir=>:S,:id=>nil},
+                 {:src=>1,:dir=>:SW,:id=>:W},
+                 {:src=>1,:dir=>:SE,:id=>nil},
+                 {:src=>3,:dir=>:S,:id=>:S}],
+
+    :cx_4_a => [{:src=>:origin,:dir=>:SE,:id=>:N},
+               {:src=>0,:dir=>:S,:id=>nil},
+               {:src=>1,:dir=>:SW,:id=>:W},
+               {:src=>1,:dir=>:SE,:id=>nil},
+               {:src=>3,:dir=>:NE,:id=>:E},
+               {:src=>3,:dir=>:S,:id=>:S}],
+
+    :cx_4_b => [{:src=>:origin,:dir=>:S,:id=>:W},
+               {:src=>0,:dir=>:SE,:id=>nil},
+               {:src=>1,:dir=>:S,:id=>:S},
+               {:src=>1,:dir=>:NE,:id=>nil},
+               {:src=>3,:dir=>:N,:id=>:N},
+               {:src=>3,:dir=>:SE,:id=>:E}] }
+
+  
 
 
   def build_terrain
@@ -358,258 +399,108 @@ module TerrainHelper
     @rivers = HexGrid.new
     @rivers.fill(:no_data)
 
-    # mark blocked edge hexes
-    0.upto(HEX_DIM_NS) {|b| river_block_ab(0,b)}
-    0.upto(HEX_DIM_NS) {|b| river_block_ab(HEX_DIM_EW,b)}
-    0.upto(HEX_DIM_EW) {|a| river_block_ab(a,0)}
-    0.upto(HEX_DIM_EW) {|a| river_block_ab(a,HEX_DIM_NS)}
-
-    #pick river starting point
-    mouth = {:a=>pick_river_mouth,:b=>HEX_DIM_NS}
-    @rivers.put(mouth,:water)
-    first_ext = next_hex(mouth,:dir_N)
-    first_ext[:dir] = :dir_N
-
-    segments_until_next_branch_point = 0
-    @new_branch_id_symbol = RV_BRANCH_ID_INIT
-    @branches_pending = []
-    add_extension(first_ext)
-
-
-    # cycle randomly through the queue of uncompleted branches until
-    # the list is empty
-    until @branches_pending == []
-
-      # randomly pick next branch to extend from pending extensions
-      branch_head = array_pick_random(@branches_pending,:equal_weight)
-
-      # if starting from a branch point, pick number of segments to next
-      # branch point
-      if segments_until_next_branch_point == 0
-        is_branch_point = true
-        segments_until_next_branch_point = int_random(1,3,:equal_weight)
-      else
-        segments_until_next_branch_point -= 1
-        is_branch_point = false
-      end
-
-      # pick the length of this segment (number of hexes in a straight line)
-      hexes_in_segment = int_random(1,3,:equal_weight)
-
-      # get the hexes for this segment
-      h = branch_head
-      direction = branch_head[:dir]
-      segment = [h]
-      (hexes_in_segment-1).times do
-        hex = next_hex(h,direction)
-        segment << hex
-        h = hex
-      end
-      segment.compact!
-
-      # check to see if the hexes are blocked
-      end_branch = false
-      segment.each {|hex| end_branch = true if river_not_allowed(hex)}
-
-      # terminate the branch if this is the end
-      if end_branch
-        river_block(next_hex(branch_head,direction))
-        river_block(go_left(branch_head,direction))
-        river_block(go_right(branch_head,direction))
-
-      # extend the branch if not the end
-      else
-        until segment == []
-          pointer = segment.shift
-          @rivers.put(pointer,:water)
-
-          # if not last hex in this segment
-          if segment.length > 0
-            river_block(go_left(pointer,direction))
-            river_block(go_right(pointer,direction))
-
-          # if last hex in this segment
-          else
-
-            # if end of segment is branch point
-            if is_branch_point
-              river_block(next_hex(pointer,direction))
-              ext_lft = go_left(pointer,direction)
-              end_branch = true if river_not_allowed(ext_lft)
-              ext_rt = go_right(pointer,direction)
-              end_branch = true if  river_not_allowed(ext_rt)
-
-              # if branch is blocked
-              if end_branch
-                river_block(ext_lft)
-                river_block(ext_rt)
-
-              # if branch is not blocked
-              else
-                add_extension(ext_lft)
-                add_extension(ext_rt)
-              end
-
-            # if end of segment is not branch point
-            else
-              river_block(next_hex(pointer,direction))
-              ext_lft = go_left(pointer,direction)
-              ext_rt = go_right(pointer,direction)
-              next_dir = array_pick_random([:left,:right],:equal_weight)
-              case next_dir
-              when :left
-                end_branch = true if river_not_allowed(ext_lft)
-              when :right
-                end_branch = true if river_not_allowed(ext_rt)
-              end
-
-              # if branch is blocked
-              if end_branch
-                river_block(ext_lft)
-                river_block(ext_rt)
-
-              # if branch is not blocked
-              else
-                case next_dir
-                when :left
-                  river_block(ext_rt)
-                  add_extension(ext_lft)
-                when :right
-                  river_block(ext_lft)
-                  add_extension(ext_rt)
-                end
-
-              end
-
-            end
-
-          end
-          
-        end
+    make_topo_grid
+    @rt_grid = @t_grid
+ 
+     
+    1.upto(@m) do |j|
+      1.upto(@n) do |k|
+        cell = @rt_grid[j][k]
+        add_connector(cell,j,k)
+        @rt_grid[j][k] = cell
 
       end
-
     end
-
     @rivers
-
   end
 
 
-  # pick which hex at the bottom of the map will be the river mouth
-  def pick_river_mouth
-    rnd = rand(RV_MOUTH_SPREAD)
-    if rnd == 0
-      start = RV_MOUTH_LO+2*rand(3)
-    elsif rnd == RV_MOUTH_SPREAD
-      start = RV_MOUTH_HI-2*rand(3)
-    else
-      start = RV_MOUTH_MID+2*rnd
+  # place a river connector (branch point) on the terrain map in the zone
+  # corresponding to a cell in the river topo grid
+  def add_connector(cell,j,k)
+    pattern = get_pattern(cell)
+    hexes = []
+    aa = (j-1)*RT_ZONE_WIDTH+3
+    bb = (k-1)*RT_ZONE_HEIGHT+2
+    template = CX_TEMPLATES[pattern]
+    template.each do |step|
+      src = step[:src]
+      dir = step[:dir]
+      id = step[:id]
+      if src == :origin
+        h0 = {:a=>aa,:b=>bb}
+      else
+        h0 = hexes[src]
+      end
+      hex = next_hex(h0,dir)
+      @rivers.put(hex,:water)
+      hexes << hex
+
     end
-    start
+
+
   end
 
 
-  def  add_extension(ext)
-    if ext != nil
-      id = @new_branch_id_symbol
-      @new_branch_id_symbol = @new_branch_id_symbol.succ
-      branch = ext
-      branch[:id] = id
-      @rivers.put(branch,id)
-      @branches_pending << branch
+  # determine the connector pattern for a cell in the river topo grid
+  def get_pattern(cell)
+    cx = "xxxx"
+    cx[0] = "N" if cell[:N] == :connect
+    cx[1] = "E" if cell[:E] == :connect
+    cx[2] = "S" if cell[:S] == :connect
+    cx[3] = "W" if cell[:W] == :connect
+    case cx
+    when "Nxxx"
+      pattern = :cx_stub_n
+    when "xExx"
+      pattern = :cx_stub_e
+    when "xxSx"
+      pattern = :cx_stub_s
+    when "xxxW"
+      pattern = :cx_stub_w
+    when "NESW"
+      if rand(2) == 0
+        pattern = :cx_4_a
+      else
+        pattern = :cx_4_b
+      end
+    when "NESx"
+      if rand(2) == 0
+        pattern = :cx_rt_a
+      else
+        pattern = :cx_rt_b
+      end
+    when "NxSW"
+      if rand(2) == 0
+        pattern = :cx_lft_a
+      else
+        pattern = :cx_lft_b
+      end
+    when "NxSx"
+      pattern = :cx_vert
+    when "xExW"
+      if rand(2) == 0
+        pattern = :cx_hrz_a
+      else
+        pattern = :cx_hrz_b
+      end
+    when "xESW"
+      pattern = :cx_dn
+    when "NExW"
+      pattern = :cx_up
+    when "NExx"
+      pattern = :cx_n_e
+    when "xESx"
+      pattern = :cx_s_e
+    when "xxSW"
+      pattern = :cx_s_w
+    when "NxxW"
+      pattern = :cx_n_w
+    else pattern = nil
     end
+  pattern
   end
 
-
-  def river_not_allowed(hex)
-    if hex == nil
-      bad = true
-    else
-      mark = @rivers.get(hex)
-      bad = true
-      bad = false if mark == :no_data
-      bad = false if mark == hex[:id]
-    end
-    bad
-  end
-
-
-  def river_block(hex)
-    @rivers.put(hex,:blocked) if @rivers.get(hex) != :water
-  end
-
-
-  def river_block_ab(a,b)
-    hex = {:a=>a,:b=>b}
-    river_block(hex)
-  end
-
-
-  def go_left(hex,dir)
-    if dir == nil
-      lft = nil
-    else
-      dir2 = left(dir)
-      lft = next_hex(hex,dir2)
-      lft[:dir] = dir2
-    end
-    lft
-  end
-
-
-  def go_right(hex,dir)
-    if dir == nil
-      rt = nil
-    else
-      dir2 = right(dir)
-      rt = next_hex(hex,dir2)
-      rt[:dir] = dir2
-    end
-    rt
-  end
-
-
-  def left(dir)
-    case dir
-    when :dir_N
-      left = :dir_NW
-    when :dir_NE
-      left = :dir_N
-    when :dir_SE
-      left = :dir_NE
-    when :dir_S
-      left = :dir_SE
-    when :dir_SW
-      left = :dir_S
-    when :dir_NW
-      left = :dir_SW
-    else
-      left = nil
-    end
-    left
-  end
-
-
-  def right(dir)
-    case dir
-    when :dir_N
-      right = :dir_NE
-    when :dir_NE
-      right = :dir_SE
-    when :dir_SE
-      right = :dir_S
-    when :dir_S
-      right = :dir_SW
-    when :dir_SW
-      right = :dir_NW
-    when :dir_NW
-      right = :dir_N
-    else
-     right = nil
-    end
-    right
-  end
 
 
   def next_hex(hex,dir)
@@ -623,22 +514,25 @@ module TerrainHelper
     end
     if (nxt != nil)
       case dir
-      when :dir_N
+      when :no_go
+        nxt[:a] = a
+        nxt[:b] = b
+      when :N
         nxt[:a] = a
         nxt[:b] = b-1
-      when :dir_NE
+      when :NE
         nxt[:a] = a+1
         nxt[:b] = b-a%2
-      when :dir_SE
+      when :SE
         nxt[:a] = a+1
         nxt[:b] = b-a%2+1
-      when :dir_S
+      when :S
         nxt[:a] = a
         nxt[:b] = b+1
-      when :dir_SW
+      when :SW
         nxt[:a] = a-1
         nxt[:b] = b-a%2+1
-      when :dir_NW
+      when :NW
         nxt[:a] = a-1
         nxt[:b] = b-a%2
       else
@@ -718,15 +612,7 @@ end
 
 
 
-helpers TerrainHelper
-
-include RiverTopoGrid
-
-
-def topo_string
-  str = RiverTopoGrid.topo_string
-  str
-end
+helpers TerrainHelper, RiverTopoGrid
 
 
 
