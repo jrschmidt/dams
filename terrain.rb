@@ -35,6 +35,7 @@ module RiverTopoGrid
     # grid size = @m x @n
     @m = 5
     @n = 3
+    @cx_list = []
 
     @compass = [:N,:E,:S,:W]
     @t_grid = [nil]
@@ -118,6 +119,8 @@ module RiverTopoGrid
 
       case status
 
+      # join segments, create new segment, or add new connection to an
+      # existing segment as appropriate
       when :new_seg
         seg = @segments.length
         set_grid(a1,b1,:seg,seg)
@@ -154,9 +157,16 @@ module RiverTopoGrid
       if status != :no_connect
         set_grid(a1,b1,dir1,:connect)
         set_grid(a2,b2,dir2,:connect)
+        add_connection(a1,b1,a2,b2,dir1,dir2)
       end
     end
 
+  end
+
+
+  def add_connection(a1,b1,a2,b2,dir1,dir2)
+    cx = {:a1=>a1,:b1=>b1,:dir1=>dir1,:a2=>a2,:b2=>b2,:dir2=>dir2}
+    @cx_list << cx
   end
 
 
@@ -219,7 +229,7 @@ module TerrainHelper
     end
 
     def put_ab(a,b,value)
-      @grid[a][b] = value
+      @grid[a-1][b-1] = value
     end
 
     def get(hex)
@@ -235,7 +245,7 @@ module TerrainHelper
     end
 
     def get_ab(a,b)
-      @grid[a][b]
+      @grid[a-1][b-1]
     end
 
     def get_map
@@ -305,6 +315,14 @@ module TerrainHelper
 
 
 # River Branch Connector Templates:
+# These templates give hex patterns for different kinds of river junctions.
+# Within an individual template array, there is one hash for each hex in that
+# pattern. :src is the index number in the array to move from to get the next
+# hex in the pattern. A value of :origin for the key :src means move from the
+# starting hex for that pattern instead. The "starting hex" may be empty in
+# some patterns. A value of :no_go for the key :dir means start at the origin
+# hex. The :id key has a value of :N, :S, :E or :W if it is the north, south,
+# east or west connector hex for that pattern.
   CX_TEMPLATES = {
     :cx_stub_n => [{:src=>:origin,:dir=>:no_go,:id=>:N}],
     :cx_stub_e => [{:src=>:origin,:dir=>:no_go,:id=>:E}],
@@ -395,22 +413,32 @@ module TerrainHelper
     @map.get_map
   end
 
+  # create the water portion of the terrain map and place the results in
+  # HexGrid object @rivers
   def build_rivers
     @rivers = HexGrid.new
     @rivers.fill(:no_data)
 
+    # generate a model for the topology of river branching
     make_topo_grid
     @rt_grid = @t_grid
  
-     
+# **** TEMP ****
+    @look = []
+
+     # add river branching points corresponding to the topology designated
+     # in the 'river topo grid' 
     1.upto(@m) do |j|
       1.upto(@n) do |k|
         cell = @rt_grid[j][k]
         add_connector(cell,j,k)
         @rt_grid[j][k] = cell
-
       end
     end
+    binding.pry
+    @cx_list.each do |cx| connect_cx(cx) end
+
+
     @rivers
   end
 
@@ -420,6 +448,9 @@ module TerrainHelper
   def add_connector(cell,j,k)
     pattern = get_pattern(cell)
     hexes = []
+
+    # (the '+3' and '+2' are to temporarily set all connectors to a set spot
+    #   in the zone, later we'll set them at random locations within the zone)
     aa = (j-1)*RT_ZONE_WIDTH+3
     bb = (k-1)*RT_ZONE_HEIGHT+2
     template = CX_TEMPLATES[pattern]
@@ -433,12 +464,22 @@ module TerrainHelper
         h0 = hexes[src]
       end
       hex = next_hex(h0,dir)
+
+# TEMP ********
+      @look << {:pt=>pattern,:hxx=>hex}
+
+      if id != nil
+        c1 = @cx_list.find {|cc| cc[:a1] == j && cc[:b1] == k && cc[:dir1] == id}
+        c2 = @cx_list.find {|cc| cc[:a2] == j && cc[:b2] == k && cc[:dir2] == id}
+        c1[:hex1] = hex if c1 != nil
+        c2[:hex2] = hex if c2 != nil
+      end
+
       @rivers.put(hex,:water)
       hexes << hex
 
+
     end
-
-
   end
 
 
@@ -502,6 +543,66 @@ module TerrainHelper
   end
 
 
+  # make the actual connection between two river connector branch points
+  def connect_cx(cx)
+    x1 = cx[:a1]
+    y1 = cx[:b1]
+
+    hex1 = {:a=>x1,:b=>y1}
+
+    dir1 = cx[:dir1]
+    x2 = cx[:a2]
+    y2 = cx[:b2]
+
+    hex2 = {:a=>x2,:b=>y2}
+
+    dir2 = cx[:dir2]
+    case dir1
+    when :S
+      mode = :vert
+      pt_n = hex1
+      pt_s = hex2
+    when :N
+      mode = :vert
+      pt_n = hex2
+      pt_s = hex1
+    when :E
+      mode = :horz
+      pt_w = hex1
+      pt_e = hex2
+    when :W
+      mode = :horz
+      pt_w = hex2
+      pt_e = hex1
+    end
+    x_west = "TEMP"
+    x_east = "TEMP"
+
+    case mode
+    when :vert
+      top = []
+
+
+    when :horz
+
+    end
+
+
+
+  end
+
+
+  # Make a vector of n hexes in a row in direction dir
+  def make_vector(hex,dir,n)
+    vector = [hex]
+    hh = hex
+    1.upto(n-1) do
+      hh = next_hex(hh,dir)
+      vector << hh
+    end
+    vector
+  end
+
 
   def next_hex(hex,dir)
     nxt = {}
@@ -522,19 +623,19 @@ module TerrainHelper
         nxt[:b] = b-1
       when :NE
         nxt[:a] = a+1
-        nxt[:b] = b-a%2
+        nxt[:b] = b-(a+1)%2
       when :SE
         nxt[:a] = a+1
-        nxt[:b] = b-a%2+1
+        nxt[:b] = b-(a+1)%2+1
       when :S
         nxt[:a] = a
         nxt[:b] = b+1
       when :SW
         nxt[:a] = a-1
-        nxt[:b] = b-a%2+1
+        nxt[:b] = b-(a+1)%2+1
       when :NW
         nxt[:a] = a-1
-        nxt[:b] = b-a%2
+        nxt[:b] = b-(a+1)%2
       else
         nxt = nil
       end
