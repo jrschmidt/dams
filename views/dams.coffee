@@ -57,7 +57,8 @@ class DataSource
       "L":"-120"
       "M":"-130"
       "N":"-140"
-      "x":"no-data" }
+      "x":"no-data"
+      "Z":"MARK-PURPLE" }
 
     dstring = @canvas.getAttribute("data-terrain-map")
 
@@ -150,7 +151,8 @@ class ElevationPalette
       "140":"#a82232"
       "water":"#a399ff"
       "empty":"#339966"
-      "no-data":"#993399" }
+      "no-data":"#993399" 
+      "MARK-PURPLE":"#ff00ff" }
 
   getcolor: (elev) ->
     if elev<0

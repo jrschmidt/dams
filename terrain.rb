@@ -42,7 +42,7 @@ module RiverTopoGrid
     1.upto(@m) do |j|
       cc = [nil]
       1.upto(@n) do |k|
-        zz = {:x=>j,:y=>k,:N=>:blank,:E=>:blank,:S=>:blank,:W=>:blank}
+        zz = {:s=>j,:t=>k,:N=>:blank,:E=>:blank,:S=>:blank,:W=>:blank}
         cc << zz
       end
       @t_grid[j] = cc
@@ -60,9 +60,9 @@ module RiverTopoGrid
     # build first segment with "mouth" cell as root
     @root = 0
     set_grid(mouth,@n,:seg,@root)
-    @root_x = mouth
-    @root_y = @n
-    root_node = {:x=>@root_x,:y=>@root_y}
+    @root_s = mouth
+    @root_t = @n
+    root_node = {:s=>@root_s,:t=>@root_t}
     @tree = [root_node]
     @segments = []
     @segments[@root] = @tree
@@ -74,13 +74,13 @@ module RiverTopoGrid
     @open_list = []
     1.upto(@m-1) do |x|
       1.upto(@n) do |y|
-        ct = {:x1=>x,:y1=>y,:dir1=>:E,:x2=>x+1,:y2=>y,:dir2=>:W}
+        ct = {:s1=>x,:t1=>y,:dir1=>:E,:s2=>x+1,:t2=>y,:dir2=>:W}
         @open_list << ct
       end
     end
     1.upto(@m) do |x|
       1.upto(@n-1) do |y|
-        ct = {:x1=>x,:y1=>y,:dir1=>:S,:x2=>x,:y2=>y+1,:dir2=>:N}
+        ct = {:s1=>x,:t1=>y,:dir1=>:S,:s2=>x,:t2=>y+1,:dir2=>:N}
         @open_list << ct
       end
     end
@@ -89,15 +89,15 @@ module RiverTopoGrid
     until @open_list == []
       @open_list.shuffle!
       connection = @open_list.pop
-      a1 = connection[:x1]
-      b1 = connection[:y1]
-      seg1 = @t_grid[a1][b1][:seg]
+      s1 = connection[:s1]
+      t1 = connection[:t1]
+      seg1 = @t_grid[s1][t1][:seg]
 
       dir1 = connection[:dir1]
-      a2 = connection[:x2]
-      b2 = connection[:y2]
+      s2 = connection[:s2]
+      t2 = connection[:t2]
       dir2 = connection[:dir2]
-      seg2 = @t_grid[a2][b2][:seg]
+      seg2 = @t_grid[s2][t2][:seg]
 
       # determine if cells in new connections
       # are already part of segments
@@ -123,20 +123,20 @@ module RiverTopoGrid
       # existing segment as appropriate
       when :new_seg
         seg = @segments.length
-        set_grid(a1,b1,:seg,seg)
-        set_grid(a2,b2,:seg,seg)
-        br = [ {:x=>a1,:y=>b1},{:x=>a2,:y=>b2} ]
+        set_grid(s1,t1,:seg,seg)
+        set_grid(s2,t2,:seg,seg)
+        br = [ {:s=>s1,:t=>t1},{:s=>s2,:t=>t2} ]
         @segments << br
       when :add_c1_to_seg2
-        set_grid(a1,b1,:seg,seg2)
+        set_grid(s1,t1,:seg,seg2)
         br = @segments[seg2]
-        cc = {:x=>a1,:y=>b1}
+        cc = {:s=>s1,:t=>t1}
         br << cc
         @segments[seg2] = br
       when :add_c2_to_seg1
-        set_grid(a2,b2,:seg,seg1)
+        set_grid(s2,t2,:seg,seg1)
         br = @segments[seg1]
-        cc = {:x=>a2,:y=>b2}
+        cc = {:s=>s2,:t=>t2}
         br << cc
         @segments[seg1] = br
       when :join_segs
@@ -144,7 +144,7 @@ module RiverTopoGrid
         segx = [seg1,seg2].max
         brx = @segments[segx]
         brx.each do |cc|
-          set_grid(cc[:x],cc[:y],:seg,seg)
+          set_grid(cc[:s],cc[:t],:seg,seg)
           cc[:seg] = seg
         end
         combo = @segments[seg1]+@segments[seg2]
@@ -155,17 +155,17 @@ module RiverTopoGrid
       end
 
       if status != :no_connect
-        set_grid(a1,b1,dir1,:connect)
-        set_grid(a2,b2,dir2,:connect)
-        add_connection(a1,b1,a2,b2,dir1,dir2)
+        set_grid(s1,t1,dir1,:connect)
+        set_grid(s2,t2,dir2,:connect)
+        add_connection(s1,t1,s2,t2,dir1,dir2)
       end
     end
 
   end
 
 
-  def add_connection(a1,b1,a2,b2,dir1,dir2)
-    cx = {:a1=>a1,:b1=>b1,:dir1=>dir1,:a2=>a2,:b2=>b2,:dir2=>dir2}
+  def add_connection(s1,t1,s2,t2,dir1,dir2)
+    cx = {:s1=>s1,:t1=>t1,:dir1=>dir1,:s2=>s2,:t2=>t2,:dir2=>dir2}
     @cx_list << cx
   end
 
@@ -229,7 +229,7 @@ module TerrainHelper
     end
 
     def put_ab(a,b,value)
-      @grid[a-1][b-1] = value
+      @grid[a][b] = value
     end
 
     def get(hex)
@@ -245,7 +245,7 @@ module TerrainHelper
     end
 
     def get_ab(a,b)
-      @grid[a-1][b-1]
+      @grid[a][b]
     end
 
     def get_map
@@ -305,7 +305,8 @@ module TerrainHelper
     :water_110,
     :water_120,
     :water_130,
-    :water_140 ] 
+    :water_140,
+    :zone ] 
 
 
 #   Heuristics Used For This Version:
@@ -422,9 +423,7 @@ module TerrainHelper
     # generate a model for the topology of river branching
     make_topo_grid
     @rt_grid = @t_grid
- 
-# **** TEMP ****
-    @look = []
+
 
      # add river branching points corresponding to the topology designated
      # in the 'river topo grid' 
@@ -435,7 +434,6 @@ module TerrainHelper
         @rt_grid[j][k] = cell
       end
     end
-    binding.pry
     @cx_list.each do |cx| connect_cx(cx) end
 
 
@@ -465,12 +463,10 @@ module TerrainHelper
       end
       hex = next_hex(h0,dir)
 
-# TEMP ********
-      @look << {:pt=>pattern,:hxx=>hex}
 
       if id != nil
-        c1 = @cx_list.find {|cc| cc[:a1] == j && cc[:b1] == k && cc[:dir1] == id}
-        c2 = @cx_list.find {|cc| cc[:a2] == j && cc[:b2] == k && cc[:dir2] == id}
+        c1 = @cx_list.find {|cc| cc[:s1] == j && cc[:t1] == k && cc[:dir1] == id}
+        c2 = @cx_list.find {|cc| cc[:s2] == j && cc[:t2] == k && cc[:dir2] == id}
         c1[:hex1] = hex if c1 != nil
         c2[:hex2] = hex if c2 != nil
       end
@@ -480,6 +476,7 @@ module TerrainHelper
 
 
     end
+
   end
 
 
@@ -545,49 +542,90 @@ module TerrainHelper
 
   # make the actual connection between two river connector branch points
   def connect_cx(cx)
-    x1 = cx[:a1]
-    y1 = cx[:b1]
-
-    hex1 = {:a=>x1,:b=>y1}
-
+    s1 = cx[:s1]
+    t1 = cx[:t1]
+    hex1 = cx[:hex1]
+    a1= hex1[:a]
+    b1 = hex1[:b]
     dir1 = cx[:dir1]
-    x2 = cx[:a2]
-    y2 = cx[:b2]
-
-    hex2 = {:a=>x2,:b=>y2}
-
+    s2 = cx[:s2]
+    t2 = cx[:t2]
+    hex2 = cx[:hex2]
+    a2 = hex2[:a]
+    b2 = hex2[:b]
     dir2 = cx[:dir2]
     case dir1
     when :S
       mode = :vert
-      pt_n = hex1
-      pt_s = hex2
+      north_point = hex1
+      south_point = hex2
     when :N
       mode = :vert
-      pt_n = hex2
-      pt_s = hex1
+      north_point = hex2
+      south_point = hex1
     when :E
       mode = :horz
-      pt_w = hex1
-      pt_e = hex2
+      west_point = hex1
+      east_point = hex2
     when :W
       mode = :horz
-      pt_w = hex2
-      pt_e = hex1
+      west_point = hex2
+      east_point = hex1
     end
-    x_west = "TEMP"
-    x_east = "TEMP"
 
     case mode
     when :vert
-      top = []
+      max_west = 8*s1-7
+      max_east = 8*s1-2
 
+      top = Array.new
+      hx = north_point
+      until hx[:a] == max_west
+        hx = next_hex(hx,:SW)
+        top << hx
+      end
+      top << next_hex(north_point,:S)
+      hx = north_point
+      until hx[:a] == max_east
+        hx = next_hex(hx,:SE)
+        top << hx
+      end
+      top.sort_by! {|hh| hh[:a]}
+
+      btm = []
+      hx = south_point
+      until hx[:a] == max_west
+        hx = next_hex(hx,:NW)
+        btm << hx
+      end
+      btm << next_hex(south_point,:N)
+      hx = south_point
+      until hx[:a] == max_east
+        hx = next_hex(hx,:NE)
+        btm << hx
+      end
+      btm.sort_by! {|hh| hh[:a]}
 
     when :horz
+      max_north = 0 
+      max_south = 0
 
     end
 
+    zone = []
+    zone_width = 0
+    zone_width = top.length if top.respond_to?(:length)
+    0.upto(zone_width-1) do |i|
+      top_hex = top[i]
+      btm_hex = btm[i]
+      aa = top_hex[:a]
+      b1 = top_hex[:b]
+      b2 = btm_hex[:b]
+      b1.upto(b2) {|bb| zone << {:a=>aa,:b=>bb} }
+    zone.each {|hx| @rivers.put(hx,:zone)}
 
+
+    end
 
   end
 
@@ -623,19 +661,19 @@ module TerrainHelper
         nxt[:b] = b-1
       when :NE
         nxt[:a] = a+1
-        nxt[:b] = b-(a+1)%2
+        nxt[:b] = b-a%2
       when :SE
         nxt[:a] = a+1
-        nxt[:b] = b-(a+1)%2+1
+        nxt[:b] = b-a%2+1
       when :S
         nxt[:a] = a
         nxt[:b] = b+1
       when :SW
         nxt[:a] = a-1
-        nxt[:b] = b-(a+1)%2+1
+        nxt[:b] = b-a%2+1
       when :NW
         nxt[:a] = a-1
-        nxt[:b] = b-(a+1)%2
+        nxt[:b] = b-a%2
       else
         nxt = nil
       end
@@ -703,7 +741,8 @@ module TerrainHelper
       :water_120 => "L",
       :water_130 => "M",
       :water_140 => "N",
-      :water => "A" }
+      :water => "A",
+      :zone => "Z" }
     ch = values.fetch(elev,:no_data)
     ch = "x" if (ch == :no_data)
     ch
