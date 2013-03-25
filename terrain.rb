@@ -578,7 +578,7 @@ module TerrainHelper
       max_west = 8*s1-7
       max_east = 8*s1-2
 
-      top = Array.new
+      top = []
       hx = north_point
       until hx[:a] == max_west
         hx = next_hex(hx,:SW)
@@ -607,8 +607,57 @@ module TerrainHelper
       btm.sort_by! {|hh| hh[:a]}
 
     when :horz
-      max_north = 0 
-      max_south = 0
+      a1 = west_point[:a]
+      b1 = west_point[:b]
+      a2 = east_point[:a]
+      b2 = east_point[:b]
+      delta_a = a2-a1
+      delta_b = b2-b1
+      zpat = ((delta_a-a1%2+1)/2).to_i
+      delta_a_top = zpat-delta_b
+      a_top = a1+delta_a_top
+      zpab = -((delta_a+a1%2)/2).to_i
+      delta_a_btm = delta_b-zpab
+      a_btm = a1+delta_a_btm
+      zpbt = ((delta_a+a1%2-1)/2).to_i
+      delta_b_top = ((delta_b-zpbt)/2).to_i
+      b_top = b1+delta_b_top
+      zpbb = -((delta_a-a1%2)/2).to_i
+      delta_b_btm = ((delta_b-zpbb+1)/2).to_i
+      b_btm = b1+delta_b_btm
+
+      top = []
+      max_west = west_point[:a]+1
+      hx = {:a=>a_top,:b=>b_top}
+      top << hx
+
+      until hx[:a] == max_west
+        hx = next_hex(hx,:SW)
+        top << hx
+      end
+
+      hx = {:a=>a_top,:b=>b_top}
+      max_east = east_point[:a]-1
+      until hx[:a] == max_east
+        hx = next_hex(hx,:SE)
+        top << hx
+      end
+      top.sort_by! {|hh| hh[:a]}
+
+      btm = []
+      hx = {:a=>a_btm,:b=>b_btm}
+      btm << hx
+      until hx[:a] == max_west
+        hx = next_hex(hx,:NW)
+        btm << hx
+      end
+
+      hx = {:a=>a_btm,:b=>b_btm}
+      until hx[:a] == max_east
+        hx = next_hex(hx,:NE)
+        btm << hx
+      end
+      btm.sort_by! {|hh| hh[:a]}
 
     end
 
@@ -622,10 +671,10 @@ module TerrainHelper
       b1 = top_hex[:b]
       b2 = btm_hex[:b]
       b1.upto(b2) {|bb| zone << {:a=>aa,:b=>bb} }
+    end
+
     zone.each {|hx| @rivers.put(hx,:zone)}
 
-
-    end
 
   end
 
