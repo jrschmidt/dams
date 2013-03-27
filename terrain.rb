@@ -542,6 +542,8 @@ module TerrainHelper
 
   # make the actual connection between two river connector branch points
   def connect_cx(cx)
+
+    # extract values from input parameter cx
     s1 = cx[:s1]
     t1 = cx[:t1]
     hex1 = cx[:hex1]
@@ -573,7 +575,11 @@ module TerrainHelper
       east_point = hex1
     end
 
+    # get the zone of possible connector hexes for vertical or horizontal
+    # connection
     case mode
+
+    # get top and bottom bounding lanes for zone for a vertical connection
     when :vert
       max_west = 8*s1-7
       max_east = 8*s1-2
@@ -606,6 +612,10 @@ module TerrainHelper
       end
       btm.sort_by! {|hh| hh[:a]}
 
+      hhxx1 = north_point
+      hhxx2 = south_point
+
+    # get top and bottom bounding lanes for zone for a horizontal connection
     when :horz
       a1 = west_point[:a]
       b1 = west_point[:b]
@@ -659,8 +669,12 @@ module TerrainHelper
       end
       btm.sort_by! {|hh| hh[:a]}
 
+      hhxx1 = west_point
+      hhxx2 = east_point
+
     end
 
+    # use the top and bottom bounding lanes to construct the connection zone
     zone = []
     zone_width = 0
     zone_width = top.length if top.respond_to?(:length)
@@ -675,7 +689,53 @@ module TerrainHelper
 
     zone.each {|hx| @rivers.put(hx,:zone)}
 
+    # pick a random connecting path through the zone
+    path = []
+    until zone == []
+      zone.shuffle!
+      hx = zone.pop
+      path << hx if not path_exists?(zone+path,hhxx1,hhxx2)
+    end
+    path.each {|hx| @rivers.put(hx,:water)}
 
+
+  end
+
+
+  # returns true if ANY path exists in zone[] connecting hex1 and hex2
+  def path_exists?(zone,hex1,hex2)
+    root = hex1.clone
+    branches = [root]
+    zone << hex2
+    path_found = false
+
+    until path_found || branches.empty?
+      branches.shuffle!
+      ptr = branches.pop
+      nbrs = zone.find_all {|z| adjacent?(z,ptr)}
+      if nbrs.include?(hex2)
+        path_found = true
+      else
+        branches = branches + nbrs
+        zone = zone - nbrs
+      end
+    end
+    path_found
+  end
+
+
+  # returns true if hex1 is adjacent to hex2
+  def adjacent?(hex1,hex2)
+    a1 = hex1[:a]
+    b1 = hex1[:b]
+    a2 = hex2[:a]
+    b2 = hex2[:b]
+    adj = false
+    adj = true if a1 == a2 && (b2 == b1-1 || b2 == b1+1)
+    adj = true if b1 == b2 && (a2 == a1-1 || a2 == a1+1)
+    adj = true if a1%2 == 0 && (a2 == a1-1 || a2 == a1+1) && b2 == b1+1
+    adj = true if a1%2 == 1 && (a2 == a1-1 || a2 == a1+1) && b2 == b1-1
+    adj    
   end
 
 
