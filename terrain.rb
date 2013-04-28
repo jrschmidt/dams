@@ -42,7 +42,7 @@ module RiverTopoGrid
     1.upto(@m) do |j|
       cc = [nil]
       1.upto(@n) do |k|
-        zz = {:s=>j,:t=>k,:N=>:blank,:E=>:blank,:S=>:blank,:W=>:blank}
+        zz = {s: j, t: k, N: :blank, E: :blank, S: :blank, W: :blank}
         cc << zz
       end
       @t_grid[j] = cc
@@ -66,25 +66,25 @@ module RiverTopoGrid
     set_grid(@mouth,@n,:seg,@root)
     @root_s = @mouth
     @root_t = @n
-    root_node = {:s=>@root_s,:t=>@root_t}
+    root_node = {s: @root_s, t: @root_t}
     @tree = [root_node]
     @segments = []
     @segments[@root] = @tree
 
     # set rest of bottom row to :blocked
-    1.upto(@m) {|j| set_grid(j,@n,:S,:blocked) if j != @mouth}
+    1.upto(@m) {|j| set_grid(j,@n,:S,:blocked) unless j == @mouth}
 
     # build list of available connections
     @open_list = []
     1.upto(@m-1) do |s|
       1.upto(@n) do |t|
-        ct = {:s1=>s,:t1=>t,:dir1=>:E,:s2=>s+1,:t2=>t,:dir2=>:W}
+        ct = {s1: s, t1: t, dir1: :E, s2: s+1, t2: t, dir2: :W}
         @open_list << ct
       end
     end
     1.upto(@m) do |s|
       1.upto(@n-1) do |t|
-        ct = {:s1=>s,:t1=>t,:dir1=>:S,:s2=>s,:t2=>t+1,:dir2=>:N}
+        ct = {s1: s, t1: t, dir1: :S, s2: s, t2: t+1, dir2: :N}
         @open_list << ct
       end
     end
@@ -105,19 +105,10 @@ module RiverTopoGrid
       # determine if cells in new connections
       # are already part of segments
       if seg1 == nil
-        if seg2 == nil
-          status = :new_seg
-        else
-          status = :add_c1_to_seg2
-        end
-      else # (seg1 != nil)
-        if seg2 == nil
-          status = :add_c2_to_seg1
-        elsif seg1 != seg2
-          status = :join_segs
-        else
-          status = :no_connect
-        end
+        status = seg2 == nil ? :new_seg : :add_c1_to_seg2
+      else
+        status = seg2 == nil ? :add_c2_to_seg1 : :join_segs
+        status = :no_connect if seg1 == seg2
       end
 
       case status
@@ -128,18 +119,18 @@ module RiverTopoGrid
         seg = @segments.length
         set_grid(s1,t1,:seg,seg)
         set_grid(s2,t2,:seg,seg)
-        br = [ {:s=>s1,:t=>t1},{:s=>s2,:t=>t2} ]
+        br = [ {s: s1, t: t1},{s: s2, t: t2} ]
         @segments << br
       when :add_c1_to_seg2
         set_grid(s1,t1,:seg,seg2)
         br = @segments[seg2]
-        cc = {:s=>s1,:t=>t1}
+        cc = {s: s1, t: t1}
         br << cc
         @segments[seg2] = br
       when :add_c2_to_seg1
         set_grid(s2,t2,:seg,seg1)
         br = @segments[seg1]
-        cc = {:s=>s2,:t=>t2}
+        cc = {s: s2, t: t2}
         br << cc
         @segments[seg1] = br
       when :join_segs
@@ -169,13 +160,13 @@ module RiverTopoGrid
 
 
   def add_connection(s1,t1,s2,t2,dir1,dir2)
-    cx = {:s1=>s1,:t1=>t1,:dir1=>dir1,:s2=>s2,:t2=>t2,:dir2=>dir2}
+    cx = {s1: s1, t1: t1, dir1: dir1, s2: s2, t2: t2, dir2: dir2}
     @cx_list << cx
   end
 
 
   def set_grid(j,k,key,value)
-    @t_grid[j][k] = {} if @t_grid[j][k] == nil
+    @t_grid[j][k] ||= {}
     cell = @t_grid[j][k]
     cell[key] = value if cell.class == Hash
     @t_grid[j][k] = cell
@@ -192,11 +183,7 @@ module RiverTopoGrid
         cell = @t_grid[j][k]
         @compass.each do |dir|
           sym = cell[dir] if cell.respond_to? :[]
-          if sym == :connect
-            ch = "c"
-          else
-            ch = "x"
-          end
+          ch = sym == :connect ? "c" : "x"
           str << ch
         end
       end
@@ -232,7 +219,7 @@ module TerrainHelper
         b = hex[:b]
         z = :bad if (a == nil || a<0 || a>HEX_DIM_EW || b == nil || b<0 || b>HEX_DIM_NS)
       end
-      put_ab(a,b,value) if (z == :good)
+      put_ab(a,b,value) if z == :good
     end
 
     def put_ab(a,b,value)
@@ -241,14 +228,14 @@ module TerrainHelper
 
     def get(hex)
       z = :good
-      if (hex == nil)
+      if hex == nil
         z = :bad
       else
         a = hex[:a]
         b = hex[:b]
         z = :bad if a == nil || a<0 || a>HEX_DIM_EW || b == nil || b<0 || b>HEX_DIM_NS
       end
-      get_ab(a,b) if (z == :good)
+      get_ab(a,b) if z == :good
     end
 
     def get_ab(a,b)
@@ -274,6 +261,18 @@ module TerrainHelper
     end
 
   end
+
+
+  class TerrainMap < HexGrid
+    DEFAULT_ELEV_VALUE = :elev_60
+
+    def fill(value)
+      value = DEFAULT_ELEV_VALUE if value == :default_base_elev
+      super(value)
+    end
+
+  end
+
 
 #   Map Constants
 #   Current map dimensions are 41 hexes East to West [0..40] and 23 hexes
@@ -332,93 +331,93 @@ module TerrainHelper
 # hex. The :id key has a value of :N, :S, :E or :W if it is the north, south,
 # east or west connector hex for that pattern.
   CX_TEMPLATES = {
-    :cx_stub_n => [{:src=>:origin,:dir=>:no_go,:id=>:N}],
-    :cx_stub_e => [{:src=>:origin,:dir=>:no_go,:id=>:E}],
-    :cx_stub_s => [{:src=>:origin,:dir=>:no_go,:id=>:S}],
-    :cx_stub_w => [{:src=>:origin,:dir=>:no_go,:id=>:W}],
+    :cx_stub_n => [{src: :origin, dir: :no_go, id: :N}],
+    :cx_stub_e => [{src: :origin, dir: :no_go, id: :E}],
+    :cx_stub_s => [{src: :origin, dir: :no_go, id: :S}],
+    :cx_stub_w => [{src: :origin, dir: :no_go, id: :W}],
 
-    :cx_vert => [{:src=>:origin,:dir=>:no_go,:id=>:N},
-                 {:src=>0,:dir=>:S,:id=>:S}],
+    :cx_vert => [{src: :origin, dir: :no_go, id: :N},
+                 {src: 0, dir: :S, id: :S}],
 
-    :cx_hrz_a => [{:src=>:origin,:dir=>:S,:id=>:W},
-                  {:src=>0,:dir=>:NE,:id=>:E}],
+    :cx_hrz_a => [{src: :origin, dir: :S, id: :W},
+                  {src: 0, dir: :NE, id: :E}],
 
-    :cx_hrz_b => [{:src=>:origin,:dir=>:no_go,:id=>:W},
-                  {:src=>0,:dir=>:SE,:id=>:E}],
+    :cx_hrz_b => [{src: :origin, dir: :no_go, id: :W},
+                  {src: 0, dir: :SE, id: :E}],
 
-    :cx_n_e => [{:src=>:origin,:dir=>:no_go,:id=>:N},
-                {:src=>0,:dir=>:S,:id=>nil},
-                {:src=>1,:dir=>:SE,:id=>:E}],
+    :cx_n_e => [{src: :origin, dir: :no_go, id: :N},
+                {src: 0, dir: :S, id: nil},
+                {src: 1, dir: :SE, id: :E}],
 
-    :cx_s_e => [{:src=>:origin,:dir=>:SE,:id=>:E},
-                {:src=>0,:dir=>:SW,:id=>nil},
-                {:src=>1,:dir=>:S,:id=>:S}],
+    :cx_s_e => [{src: :origin, dir: :SE, id: :E},
+                {src: 0, dir: :SW, id: nil},
+                {src: 1, dir: :S, id: :S}],
 
-    :cx_s_w => [{:src=>:origin,:dir=>:no_go,:id=>:W},
-                {:src=>0,:dir=>:SE,:id=>nil},
-                {:src=>1,:dir=>:S,:id=>:S}],
+    :cx_s_w => [{src: :origin, dir: :no_go, id: :W},
+                {src: 0, dir: :SE, id: nil},
+                {src: 1, dir: :S, id: :S}],
 
-    :cx_n_w => [{:src=>:origin,:dir=>:SE,:id=>:N},
-                {:src=>0,:dir=>:S,:id=>nil},
-                {:src=>1,:dir=>:SW,:id=>:W}],
+    :cx_n_w => [{src: :origin, dir: :SE, id: :N},
+                {src: 0, dir: :S, id: nil},
+                {src: 1, dir: :SW, id: :W}],
 
-    :cx_dn => [{:src=>:origin,:dir=>:no_go,:id=>:W},
-               {:src=>0,:dir=>:SE,:id=>nil},
-               {:src=>1,:dir=>:S,:id=>:S},
-               {:src=>1,:dir=>:NE,:id=>:E}],
+    :cx_dn => [{src: :origin, dir: :no_go, id: :W},
+               {src: 0, dir: :SE, id: nil},
+               {src: 1, dir: :S, id: :S},
+               {src: 1, dir: :NE, id: :E}],
 
-    :cx_up => [{:src=>:origin,:dir=>:SE,:id=>:N},
-               {:src=>0,:dir=>:S,:id=>nil},
-               {:src=>1,:dir=>:SW,:id=>:W},
-               {:src=>1,:dir=>:SE,:id=>:E}],
+    :cx_up => [{src: :origin, dir: :SE, id: :N},
+               {src: 0, dir: :S, id: nil},
+               {src: 1, dir: :SW, id: :W},
+               {src: 1, dir: :SE, id: :E}],
 
-    :cx_rt_a => [{:src=>:origin,:dir=>:no_go,:id=>:N},
-                 {:src=>0,:dir=>:S,:id=>nil},
-                 {:src=>1,:dir=>:SE,:id=>nil},
-                 {:src=>2,:dir=>:S,:id=>:S},
-                 {:src=>2,:dir=>:NE,:id=>:E}],
+    :cx_rt_a => [{src: :origin, dir: :no_go, id: :N},
+                 {src: 0, dir: :S, id: nil},
+                 {src: 1, dir: :SE, id: nil},
+                 {src: 2, dir: :S, id: :S},
+                 {src: 2, dir: :NE, id: :E}],
 
-    :cx_rt_b => [{:src=>:origin,:dir=>:SE,:id=>:N},
-                 {:src=>0,:dir=>:S,:id=>nil},
-                 {:src=>1,:dir=>:SE,:id=>:E},
-                 {:src=>1,:dir=>:SW,:id=>nil},
-                 {:src=>3,:dir=>:S,:id=>:S}],
+    :cx_rt_b => [{src: :origin, dir: :SE, id: :N},
+                 {src: 0, dir: :S, id: nil},
+                 {src: 1, dir: :SE, id: :E},
+                 {src: 1, dir: :SW, id: nil},
+                 {src: 3, dir: :S, id: :S}],
 
-    :cx_lft_a => [{:src=>:origin,:dir=>:S,:id=>:W},
-                  {:src=>0,:dir=>:SE,:id=>nil},
-                  {:src=>1,:dir=>:S,:id=>:S},
-                  {:src=>1,:dir=>:NE,:id=>nil},
-                  {:src=>3,:dir=>:N,:id=>:N}],
+    :cx_lft_a => [{src: :origin, dir: :S, id: :W},
+                  {src: 0, dir: :SE, id: nil},
+                  {src: 1, dir: :S, id: :S},
+                  {src: 1, dir: :NE, id: nil},
+                  {src: 3, dir: :N, id: :N}],
 
-    :cx_lft_b => [{:src=>:origin,:dir=>:SE,:id=>:N},
-                  {:src=>0,:dir=>:S,:id=>nil},
-                  {:src=>1,:dir=>:SW,:id=>:W},
-                  {:src=>1,:dir=>:SE,:id=>nil},
-                  {:src=>3,:dir=>:S,:id=>:S}],
+    :cx_lft_b => [{src: :origin, dir: :SE, id: :N},
+                  {src: 0, dir: :S, id: nil},
+                  {src: 1, dir: :SW, id: :W},
+                  {src: 1, dir: :SE, id: nil},
+                  {src: 3, dir: :S, id: :S}],
 
-    :cx_4_a => [{:src=>:origin,:dir=>:SE,:id=>:N},
-                {:src=>0,:dir=>:S,:id=>nil},
-                {:src=>1,:dir=>:SW,:id=>:W},
-                {:src=>1,:dir=>:SE,:id=>nil},
-                {:src=>3,:dir=>:NE,:id=>:E},
-                {:src=>3,:dir=>:S,:id=>:S}],
+    :cx_4_a => [{src: :origin, dir: :SE, id: :N},
+                {src: 0, dir: :S, id: nil},
+                {src: 1, dir: :SW, id: :W},
+                {src: 1, dir: :SE, id: nil},
+                {src: 3, dir: :NE, id: :E},
+                {src: 3, dir: :S, id: :S}],
 
-    :cx_4_b => [{:src=>:origin,:dir=>:S,:id=>:W},
-                {:src=>0,:dir=>:SE,:id=>nil},
-                {:src=>1,:dir=>:S,:id=>:S},
-                {:src=>1,:dir=>:NE,:id=>nil},
-                {:src=>3,:dir=>:N,:id=>:N},
-                {:src=>3,:dir=>:SE,:id=>:E}],
+    :cx_4_b => [{src: :origin, dir: :S, id: :W},
+                {src: 0, dir: :SE, id: nil},
+                {src: 1, dir: :S, id: :S},
+                {src: 1, dir: :NE, id: nil},
+                {src: 3, dir: :N, id: :N},
+                {src: 3, dir: :SE, id: :E}],
 
-    :cx_river_mouth => [{:src=>:origin,:dir=>:no_go,:id=>nil},
-                        {:src=>0,:dir=>:N,:id=>:N}] }
+    :cx_river_mouth => [{src: :origin, dir: :no_go, id: nil},
+                        {src: 0, dir: :N, id: :N}] }
 
   
 
 
   def build_terrain
-    @map = HexGrid.new
-    @map.fill(:elev_60)
+    @map = TerrainMap.new
+    @map.fill(:default_base_elev)
     @rivers = build_rivers
     @map.add_data(@rivers,:rivers)
     @map.get_map
@@ -449,8 +448,11 @@ module TerrainHelper
     add_connector(mcell,@mouth,@n+1)
 
     # connect the branching points to each other
-    @cx_list.each do |cx| connect_cx(cx) end
-    binding.pry
+    @cx_list.each {|cx| connect_cx(cx)}
+
+    # generate water elevation
+    generate_water_elevation(@rivers)
+
     @rivers
   end
 
@@ -478,27 +480,17 @@ module TerrainHelper
       src = step[:src]
       dir = step[:dir]
       id = step[:id]
-      if src == :origin
-        h0 = {:a=>aa,:b=>bb}
-      else
-        h0 = prior_hexes[src]
-      end
+      h0 = src == :origin ? {a: aa, b: bb} : prior_hexes[src]
       hex = next_hex(h0,dir)
-
-
       if id != nil
         c1 = @cx_list.find {|cc| cc[:s1] == j && cc[:t1] == k && cc[:dir1] == id}
         c2 = @cx_list.find {|cc| cc[:s2] == j && cc[:t2] == k && cc[:dir2] == id}
-        c1[:hex1] = hex if c1 != nil
-        c2[:hex2] = hex if c2 != nil
+        c1[:hex1] = hex unless c1 == nil
+        c2[:hex2] = hex unless c2 == nil
       end
-
       @rivers.put(hex,:water)
       prior_hexes << hex
-
-
     end
-
   end
 
 
@@ -511,11 +503,7 @@ module TerrainHelper
     cx[3] = "W" if cell[:W] == :connect
     case cx
     when "Nxxx"
-      if cell[:is_mouth] == true
-        pattern = :cx_river_mouth
-      else
-        pattern = :cx_stub_n
-      end
+      pattern = cell[:is_mouth] == true ? :cx_river_mouth : :cx_stub_n
     when "xExx"
       pattern = :cx_stub_e
     when "xxSx"
@@ -523,31 +511,15 @@ module TerrainHelper
     when "xxxW"
       pattern = :cx_stub_w
     when "NESW"
-      if rand(2) == 0
-        pattern = :cx_4_a
-      else
-        pattern = :cx_4_b
-      end
+      pattern = rand(2) == 0 ? :cx_4_a : :cx_4_b
     when "NESx"
-      if rand(2) == 0
-        pattern = :cx_rt_a
-      else
-        pattern = :cx_rt_b
-      end
+      pattern = rand(2) == 0 ? :cx_rt_a : :cx_rt_b
     when "NxSW"
-      if rand(2) == 0
-        pattern = :cx_lft_a
-      else
-        pattern = :cx_lft_b
-      end
+      pattern = rand(2) == 0 ? :cx_lft_a : :cx_lft_b
     when "NxSx"
       pattern = :cx_vert
     when "xExW"
-      if rand(2) == 0
-        pattern = :cx_hrz_a
-      else
-        pattern = :cx_hrz_b
-      end
+      pattern = rand(2) == 0 ? :cx_hrz_a : :cx_hrz_b
     when "xESW"
       pattern = :cx_dn
     when "NExW"
@@ -612,10 +584,8 @@ module TerrainHelper
 
       top = []
       hx = north_point
-      binding.pry if hx == nil
       until hx[:a] == max_west || hx == south_point
         hx = next_hex(hx,:SW)
-        binding.pry if hx == nil
         top << hx
       end
       top << next_hex(north_point,:S)
@@ -666,7 +636,7 @@ module TerrainHelper
 
       top = []
       max_west = west_point[:a]+1
-      hx = {:a=>a_top,:b=>b_top}
+      hx = {a: a_top, b: b_top}
       top << hx
 
       until hx[:a] == max_west
@@ -674,7 +644,7 @@ module TerrainHelper
         top << hx
       end
 
-      hx = {:a=>a_top,:b=>b_top}
+      hx = {a: a_top, b: b_top}
       max_east = east_point[:a]-1
       until hx[:a] == max_east
         hx = next_hex(hx,:SE)
@@ -683,14 +653,14 @@ module TerrainHelper
       top.sort_by! {|hh| hh[:a]}
 
       btm = []
-      hx = {:a=>a_btm,:b=>b_btm}
+      hx = {a: a_btm, b: b_btm}
       btm << hx
       until hx[:a] == max_west
         hx = next_hex(hx,:NW)
         btm << hx
       end
 
-      hx = {:a=>a_btm,:b=>b_btm}
+      hx = {a: a_btm, b: b_btm}
       until hx[:a] == max_east
         hx = next_hex(hx,:NE)
         btm << hx
@@ -712,7 +682,7 @@ module TerrainHelper
       aa = top_hex[:a]
       b1 = top_hex[:b]
       b2 = btm_hex[:b]
-      b1.upto(b2) {|bb| zone << {:a=>aa,:b=>bb} }
+      b1.upto(b2) {|bb| zone << {a: aa, b: bb} }
     end
 
     # pick a random connecting path through the zone
@@ -720,9 +690,14 @@ module TerrainHelper
     until zone == []
       zone.shuffle!
       hx = zone.pop
-      path << hx if not path_exists?(zone+path,hhxx1,hhxx2)
+      path << hx unless path_exists?(zone+path,hhxx1,hhxx2)
     end
     path.each {|hx| @rivers.put(hx,:water)}
+
+  end
+
+
+  def generate_water_elevation(river_grid)
 
   end
 
@@ -778,14 +753,14 @@ module TerrainHelper
 
   def next_hex(hex,dir)
     nxt = {}
-    if (hex == nil)
+    if hex == nil
       nxt = nil
     else
       a = hex[:a]
       b = hex[:b]
       nxt = nil if a == nil || b == nil
     end
-    if (nxt != nil)
+    if nxt != nil
       case dir
       when :no_go
         nxt[:a] = a
@@ -836,9 +811,7 @@ module TerrainHelper
     str = ""
     @terrain = build_terrain
     @terrain.each do |t|
-      t.each do |hex|
-        str << encode(hex)
-      end
+      t.each {|hex| str << encode(hex)}
     end
     str
   end
@@ -847,38 +820,38 @@ module TerrainHelper
   # encode elevation values to a one-character code
   def encode(elev)
     values = {
-      :elev_10 => "a",
-      :elev_20 => "b",
-      :elev_30 => "c",
-      :elev_40 => "d",
-      :elev_50 => "e",
-      :elev_60 => "f",
-      :elev_70 => "g",
-      :elev_80 => "h",
-      :elev_90 => "i",
-      :elev_100 => "j",
-      :elev_110 => "k",
-      :elev_120 => "l",
-      :elev_130 => "m",
-      :elev_140 => "n", 
-      :water_10 => "A",
-      :water_20 => "B",
-      :water_30 => "C",
-      :water_40 => "D",
-      :water_50 => "E",
-      :water_60 => "F",
-      :water_70 => "G",
-      :water_80 => "H",
-      :water_90 => "I",
-      :water_100 => "J",
-      :water_110 => "K",
-      :water_120 => "L",
-      :water_130 => "M",
-      :water_140 => "N",
-      :water => "A",
-      :zone => "Z" }
+      elev_10: "a",
+      elev_20: "b",
+      elev_30: "c",
+      elev_40: "d",
+      elev_50: "e",
+      elev_60: "f",
+      elev_70: "g",
+      elev_80: "h",
+      elev_90: "i",
+      elev_100: "j",
+      elev_110: "k",
+      elev_120: "l",
+      elev_130: "m",
+      elev_140: "n", 
+      water_10: "A",
+      water_20: "B",
+      water_30: "C",
+      water_40: "D",
+      water_50: "E",
+      water_60: "F",
+      water_70: "G",
+      water_80: "H",
+      water_90: "I",
+      water_100: "J",
+      water_110: "K",
+      water_120: "L",
+      water_130: "M",
+      water_140: "N",
+      water: "A",
+      zone: "Z" }
     ch = values.fetch(elev,:no_data)
-    ch = "x" if (ch == :no_data)
+    ch = "x" if ch == :no_data
     ch
   end
 
