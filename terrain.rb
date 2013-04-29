@@ -17,35 +17,59 @@ get '/javascripts/dams.js' do
 end
 
 
+  LAND_SYMBOLS = [
+    :elev_10,
+    :elev_20,
+    :elev_30,
+    :elev_40,
+    :elev_50,
+    :elev_60,
+    :elev_70,
+    :elev_80,
+    :elev_90,
+    :elev_100,
+    :elev_110,
+    :elev_120,
+    :elev_130,
+    :elev_140 ] 
 
-module RiverTopoGrid
+  WATER_SYMBOLS = [
+    :water,
+    :water_10,
+    :water_20,
+    :water_30,
+    :water_40,
+    :water_50,
+    :water_60,
+    :water_70,
+    :water_80,
+    :water_90,
+    :water_100,
+    :water_110,
+    :water_120,
+    :water_130,
+    :water_140,
+    :zone ]
 
 
-  def get_m
-    @m = 5
-  end
 
+class RiverTopoGrid
 
-  def get_n
-    @n = 3
-  end
-
-
-  def make_topo_grid
+  def initialize
     # grid size = @m x @n
     @m = 5
     @n = 3
     @cx_list = []
 
     @compass = [:N,:E,:S,:W]
-    @t_grid = [nil]
+    @grid = [nil]
     1.upto(@m) do |j|
       cc = [nil]
       1.upto(@n) do |k|
         zz = {s: j, t: k, N: :blank, E: :blank, S: :blank, W: :blank}
         cc << zz
       end
-      @t_grid[j] = cc
+      @grid[j] = cc
     end
 
     # block edges
@@ -96,11 +120,11 @@ module RiverTopoGrid
       s1 = connection[:s1]
       t1 = connection[:t1]
       dir1 = connection[:dir1]
-      seg1 = @t_grid[s1][t1][:seg]
+      seg1 = @grid[s1][t1][:seg]
       s2 = connection[:s2]
       t2 = connection[:t2]
       dir2 = connection[:dir2]
-      seg2 = @t_grid[s2][t2][:seg]
+      seg2 = @grid[s2][t2][:seg]
 
       # determine if cells in new connections
       # are already part of segments
@@ -159,28 +183,56 @@ module RiverTopoGrid
   end
 
 
+  def m
+    @m
+  end
+
+
+  def n
+    @n
+  end
+
+
+  def cx_list
+    @cx_list
+  end
+
+
+  def set_grid(j,k,key,value)
+    @grid[j][k] ||= {}
+    cell = @grid[j][k]
+    cell[key] = value if cell.class == Hash
+    @grid[j][k] = cell
+  end
+
+
+  def get_all_cells
+    all_cells = @grid == nil ? [] : @grid.flatten.compact
+    all_cells
+  end
+
+
   def add_connection(s1,t1,s2,t2,dir1,dir2)
     cx = {s1: s1, t1: t1, dir1: dir1, s2: s2, t2: t2, dir2: dir2}
     @cx_list << cx
   end
 
 
-  def set_grid(j,k,key,value)
-    @t_grid[j][k] ||= {}
-    cell = @t_grid[j][k]
-    cell[key] = value if cell.class == Hash
-    @t_grid[j][k] = cell
+  def mark_connection_zone(s,t,dir,hex)
+    c1 = cx_list.find {|cc| cc[:s1] == s && cc[:t1] == t && cc[:dir1] == dir}
+    c2 = cx_list.find {|cc| cc[:s2] == s && cc[:t2] == t && cc[:dir2] == dir}
+    c1[:hex1] = hex unless c1 == nil
+    c2[:hex2] = hex unless c2 == nil
   end
 
 
   # make a string to pass to the DOM so a coffeescript method can draw a
   # diagram of the topo grid
-  def topo_string
-    make_topo_grid if @t_grid == nil
+  def to_dom_string
     str = ""
     1.upto(@n) do |k|
       1.upto(@m) do |j|
-        cell = @t_grid[j][k]
+        cell = @grid[j][k]
         @compass.each do |dir|
           sym = cell[dir] if cell.respond_to? :[]
           ch = sym == :connect ? "c" : "x"
@@ -196,140 +248,266 @@ end
 
 
 
-module TerrainHelper
+class HexGrid
 
-
-  class HexGrid
-
-    def initialize
-      @grid = []
-      fill(:no_data)
-    end
-
-    def fill(value)
-      0.upto(HEX_DIM_EW) {|i| @grid[i] = [value]*(HEX_DIM_NS+1)}
-    end
-
-    def put(hex,value)
-      z = :good
-      if hex == nil
-        z = :bad
-      else
-        a = hex[:a]
-        b = hex[:b]
-        z = :bad if (a == nil || a<0 || a>HEX_DIM_EW || b == nil || b<0 || b>HEX_DIM_NS)
-      end
-      put_ab(a,b,value) if z == :good
-    end
-
-    def put_ab(a,b,value)
-      @grid[a][b] = value
-    end
-
-    def get(hex)
-      z = :good
-      if hex == nil
-        z = :bad
-      else
-        a = hex[:a]
-        b = hex[:b]
-        z = :bad if a == nil || a<0 || a>HEX_DIM_EW || b == nil || b<0 || b>HEX_DIM_NS
-      end
-      get_ab(a,b) if z == :good
-    end
-
-    def get_ab(a,b)
-      @grid[a][b]
-    end
-
-    def get_map
-      @grid
-    end
-
-
-    def add_data(hex_grid2,mode)
-      case mode
-      when :rivers
-        symbols = WATER_SYMBOLS
-      end
-      0.upto(HEX_DIM_EW) do |a|
-        0.upto(HEX_DIM_NS) do |b|
-          value = hex_grid2.get_ab(a,b)
-          put_ab(a,b,value) if symbols.include?(value)
-        end
-      end
-    end
-
-  end
-
-
-  class TerrainMap < HexGrid
-    DEFAULT_ELEV_VALUE = :elev_60
-
-    def fill(value)
-      value = DEFAULT_ELEV_VALUE if value == :default_base_elev
-      super(value)
-    end
-
-  end
-
-
-#   Map Constants
-#   Current map dimensions are 41 hexes East to West [0..40] and 23 hexes
-#   North to South [0.22].
+  #   Map Constants
+  #   Current map dimensions are 41 hexes East to West [0..40] and 23 hexes
+  #   North to South [0.22].
   HEX_DIM_EW = 40
   HEX_DIM_NS = 22
 
-  LAND_SYMBOLS = [
-    :elev_10,
-    :elev_20,
-    :elev_30,
-    :elev_40,
-    :elev_50,
-    :elev_60,
-    :elev_70,
-    :elev_80,
-    :elev_90,
-    :elev_100,
-    :elev_110,
-    :elev_120,
-    :elev_130,
-    :elev_140 ] 
-
-  WATER_SYMBOLS = [
-    :water,
-    :water_10,
-    :water_20,
-    :water_30,
-    :water_40,
-    :water_50,
-    :water_60,
-    :water_70,
-    :water_80,
-    :water_90,
-    :water_100,
-    :water_110,
-    :water_120,
-    :water_130,
-    :water_140,
-    :zone ] 
+  def initialize
+    @grid = []
+    fill(:no_data)
+  end
 
 
-#   Heuristics Used For This Version:
-#   (with their constants)
-  RT_ZONE_WIDTH = 8
-  RT_ZONE_HEIGHT = 8
+  def grid
+    @grid
+  end
 
 
-# River Branch Connector Templates:
-# These templates give hex patterns for different kinds of river junctions.
-# Within an individual template array, there is one hash for each hex in that
-# pattern. :src is the index number in the array to move from to get the next
-# hex in the pattern. A value of :origin for the key :src means move from the
-# starting hex for that pattern instead. The "starting hex" may be empty in
-# some patterns. A value of :no_go for the key :dir means start at the origin
-# hex. The :id key has a value of :N, :S, :E or :W if it is the north, south,
-# east or west connector hex for that pattern.
+  def fill(value)
+    0.upto(HEX_DIM_EW) {|i| @grid[i] = [value]*(HEX_DIM_NS+1)}
+  end
+
+
+  def put(hex,value)
+    z = :good
+    if hex == nil
+      z = :bad
+    else
+      a = hex[:a]
+      b = hex[:b]
+      z = :bad if (a == nil || a<0 || a>HEX_DIM_EW || b == nil || b<0 || b>HEX_DIM_NS)
+    end
+    put_ab(a,b,value) if z == :good
+  end
+
+
+  def put_ab(a,b,value)
+    @grid[a][b] = value
+  end
+
+
+  def get(hex)
+    z = :good
+    if hex == nil
+      z = :bad
+    else
+      a = hex[:a]
+      b = hex[:b]
+      z = :bad if a == nil || a<0 || a>HEX_DIM_EW || b == nil || b<0 || b>HEX_DIM_NS
+    end
+    get_ab(a,b) if z == :good
+  end
+
+
+  def get_ab(a,b)
+    @grid[a][b]
+  end
+
+
+  # merge data from another HexGrid object with this one
+  def add_data(hex_grid2,mode)
+    case mode
+    when :rivers
+      symbols = WATER_SYMBOLS
+    end
+    0.upto(HEX_DIM_EW) do |a|
+      0.upto(HEX_DIM_NS) do |b|
+        value = hex_grid2.get_ab(a,b)
+        put_ab(a,b,value) if symbols.include?(value)
+      end
+    end
+  end
+
+
+  # returns true if ANY path exists in zone[] connecting hex1 and hex2
+  def path_exists?(zone,hex1,hex2)
+    root = hex1.clone
+    branches = [root]
+    zone << hex2
+    path_found = false
+
+    until path_found || branches.empty?
+      branches.shuffle!
+      ptr = branches.pop
+      nbrs = zone.find_all {|z| adjacent?(z,ptr)}
+      if nbrs.include?(hex2)
+        path_found = true
+      else
+        branches = branches + nbrs
+        zone = zone - nbrs
+      end
+    end
+    path_found
+  end
+
+
+  # returns true if hex1 is adjacent to hex2
+  def adjacent?(hex1,hex2)
+    a1 = hex1[:a]
+    b1 = hex1[:b]
+    a2 = hex2[:a]
+    b2 = hex2[:b]
+    adj = false
+    adj = true if a1 == a2 && (b2 == b1-1 || b2 == b1+1)
+    adj = true if b1 == b2 && (a2 == a1-1 || a2 == a1+1)
+    adj = true if a1%2 == 0 && (a2 == a1-1 || a2 == a1+1) && b2 == b1+1
+    adj = true if a1%2 == 1 && (a2 == a1-1 || a2 == a1+1) && b2 == b1-1
+    adj    
+  end
+
+
+  # Make a vector of n hexes in a row in direction dir
+  def make_vector(hex,dir,n)
+    vector = [hex]
+    hh = hex
+    1.upto(n-1) do
+      hh = next_hex(hh,dir)
+      vector << hh
+    end
+    vector
+  end
+
+
+  def next_hex(hex,dir)
+    nxt = {}
+    if hex == nil
+      nxt = nil
+    else
+      a = hex[:a]
+      b = hex[:b]
+      nxt = nil if a == nil || b == nil
+    end
+    if nxt != nil
+      case dir
+      when :no_go
+        nxt[:a] = a
+        nxt[:b] = b
+      when :N
+        nxt[:a] = a
+        nxt[:b] = b-1
+      when :NE
+        nxt[:a] = a+1
+        nxt[:b] = b-a%2
+      when :SE
+        nxt[:a] = a+1
+        nxt[:b] = b-a%2+1
+      when :S
+        nxt[:a] = a
+        nxt[:b] = b+1
+      when :SW
+        nxt[:a] = a-1
+        nxt[:b] = b-a%2+1
+      when :NW
+        nxt[:a] = a-1
+        nxt[:b] = b-a%2
+      else
+        nxt = nil
+      end
+      nxt = nil if nxt[:a]<0 || nxt[:a]>HEX_DIM_EW || nxt[:b]<0 || nxt[:b]>HEX_DIM_NS
+    end
+    nxt
+  end
+
+
+end
+
+
+
+class TerrainMap < HexGrid
+
+  DEFAULT_ELEV_VALUE = :elev_60
+
+  def initialize
+  super
+  fill(:default_base_elev)
+  @rivers = RiverMap.new
+  add_data(@rivers,:rivers)
+  end
+
+
+  def rivers
+    @rivers
+  end
+
+
+  def get_map
+    @grid
+  end
+
+
+  def fill(value)
+    value = DEFAULT_ELEV_VALUE if value == :default_base_elev
+    super(value)
+  end
+
+
+  def to_dom_string
+    str = ""
+    @grid.each do |t|
+      t.each {|hex| str << encode(hex)}
+    end
+    str
+  end
+
+
+  # encode elevation values to a one-character code
+  def encode(elev)
+    values = {
+      elev_10: "a",
+      elev_20: "b",
+      elev_30: "c",
+      elev_40: "d",
+      elev_50: "e",
+      elev_60: "f",
+      elev_70: "g",
+      elev_80: "h",
+      elev_90: "i",
+      elev_100: "j",
+      elev_110: "k",
+      elev_120: "l",
+      elev_130: "m",
+      elev_140: "n", 
+      water_10: "A",
+      water_20: "B",
+      water_30: "C",
+      water_40: "D",
+      water_50: "E",
+      water_60: "F",
+      water_70: "G",
+      water_80: "H",
+      water_90: "I",
+      water_100: "J",
+      water_110: "K",
+      water_120: "L",
+      water_130: "M",
+      water_140: "N",
+      water: "A",
+      zone: "Z" }
+    ch = values.fetch(elev,:no_data)
+    ch = "x" if ch == :no_data
+    ch
+  end
+
+
+end
+
+
+
+class RiverMap < HexGrid
+
+  # River Branch Connector Templates:
+  # These templates give hex patterns for different kinds of river junctions.
+  # Within an individual template array, there is one hash for each hex in that
+  # pattern. :src is the index number in the array to move from to get the next
+  # hex in the pattern. A value of :origin for the key :src means move from the
+  # starting hex for that pattern instead. The "starting hex" may be empty in
+  # some patterns. A value of :no_go for the key :dir means start at the origin
+  # hex. The :id key has a value of :N, :S, :E or :W if it is the north, south,
+  # east or west connector hex for that pattern.
   CX_TEMPLATES = {
     :cx_stub_n => [{src: :origin, dir: :no_go, id: :N}],
     :cx_stub_e => [{src: :origin, dir: :no_go, id: :E}],
@@ -412,61 +590,65 @@ module TerrainHelper
     :cx_river_mouth => [{src: :origin, dir: :no_go, id: nil},
                         {src: 0, dir: :N, id: :N}] }
 
-  
+  RT_ZONE_WIDTH = 8
+  RT_ZONE_HEIGHT = 8
 
-
-  def build_terrain
-    @map = TerrainMap.new
-    @map.fill(:default_base_elev)
-    @rivers = build_rivers
-    @map.add_data(@rivers,:rivers)
-    @map.get_map
-  end
-
-  # create the water portion of the terrain map and place the results in
-  # HexGrid object @rivers
-  def build_rivers
-    @rivers = HexGrid.new
-    @rivers.fill(:no_data)
+  def initialize
+    super
+    fill(:no_data)
 
     # generate a model for the topology of river branching
-    make_topo_grid
-    @rt_grid = @t_grid
+    @river_topo = RiverTopoGrid.new
 
-
-     # add river branching points corresponding to the topology designated
-     # in the 'river topo grid' 
-    1.upto(@m) do |j|
-      1.upto(@n) do |k|
-        cell = @rt_grid[j][k]
-        add_connector(cell,j,k)
-        @rt_grid[j][k] = cell
-      end
-    end
-
-    mcell = @rt_grid[@mouth][@n+1]
-    add_connector(mcell,@mouth,@n+1)
+    # add river branching points corresponding to the topology designated
+    # in the 'river topo grid' 
+    @river_topo.get_all_cells.each {|cell| add_connector(cell)}
 
     # connect the branching points to each other
-    @cx_list.each {|cx| connect_cx(cx)}
+    @river_topo.cx_list.each {|cx| connect_cx(cx)}
 
     # generate water elevation
     generate_water_elevation(@rivers)
 
-    @rivers
+  end
+
+
+  def river_topo
+    @river_topo
   end
 
 
   # place a river connector (branch point) on the terrain map in the zone
   # corresponding to a cell in the river topo grid
-  def add_connector(cell,j,k)
+  def add_connector(cell)
     pattern = get_pattern(cell)
+    start = get_start_point(cell,pattern)
     prior_hexes = []
+
+    # starting at the 'start point' hex, follow the pattern to build the connector
+    template = CX_TEMPLATES[pattern]
+    template.each do |step|
+      src = step[:src]
+      dir = step[:dir]
+      id = step[:id]
+      h0 = src == :origin ? {a: start[:a], b: start[:b]} : prior_hexes[src]
+      hex = next_hex(h0,dir)
+      prior_hexes << hex
+
+      put(hex,:water)
+      @river_topo.mark_connection_zone(cell[:s],cell[:t],id,hex) unless id == nil
+    end
+  end
+
+
+  def get_start_point(cell,pattern)
+    s = cell[:s]
+    t = cell[:t]
 
     # (the '+3' and '+2' are to temporarily set all connectors to a set spot
     #   in the zone, later we'll set them at random locations within the zone)
-    aa = (j-1)*RT_ZONE_WIDTH+3
-    bb = (k-1)*RT_ZONE_HEIGHT+2
+    aa = (s-1)*RT_ZONE_WIDTH+3
+    bb = (t-1)*RT_ZONE_HEIGHT+2
 
     # for the river mouth, use special values
     if pattern == :cx_river_mouth
@@ -474,23 +656,7 @@ module TerrainHelper
       bb = HEX_DIM_NS
     end
 
-    # starting at hex (aa,bb), follow the pattern to build the connector
-    template = CX_TEMPLATES[pattern]
-    template.each do |step|
-      src = step[:src]
-      dir = step[:dir]
-      id = step[:id]
-      h0 = src == :origin ? {a: aa, b: bb} : prior_hexes[src]
-      hex = next_hex(h0,dir)
-      if id != nil
-        c1 = @cx_list.find {|cc| cc[:s1] == j && cc[:t1] == k && cc[:dir1] == id}
-        c2 = @cx_list.find {|cc| cc[:s2] == j && cc[:t2] == k && cc[:dir2] == id}
-        c1[:hex1] = hex unless c1 == nil
-        c2[:hex2] = hex unless c2 == nil
-      end
-      @rivers.put(hex,:water)
-      prior_hexes << hex
-    end
+    {a: aa, b: bb}
   end
 
 
@@ -538,7 +704,8 @@ module TerrainHelper
   end
 
 
-  # make the actual connection between two river connector branch points
+  # make the actual connection between two river connector branch points and
+  # return the path of that connection
   def connect_cx(cx)
 
     # extract values from input parameter cx
@@ -692,7 +859,7 @@ module TerrainHelper
       hx = zone.pop
       path << hx unless path_exists?(zone+path,hhxx1,hhxx2)
     end
-    path.each {|hx| @rivers.put(hx,:water)}
+    path.each {|hx| put(hx,:water)}
 
   end
 
@@ -702,164 +869,26 @@ module TerrainHelper
   end
 
 
-  # returns true if ANY path exists in zone[] connecting hex1 and hex2
-  def path_exists?(zone,hex1,hex2)
-    root = hex1.clone
-    branches = [root]
-    zone << hex2
-    path_found = false
-
-    until path_found || branches.empty?
-      branches.shuffle!
-      ptr = branches.pop
-      nbrs = zone.find_all {|z| adjacent?(z,ptr)}
-      if nbrs.include?(hex2)
-        path_found = true
-      else
-        branches = branches + nbrs
-        zone = zone - nbrs
-      end
-    end
-    path_found
-  end
-
-
-  # returns true if hex1 is adjacent to hex2
-  def adjacent?(hex1,hex2)
-    a1 = hex1[:a]
-    b1 = hex1[:b]
-    a2 = hex2[:a]
-    b2 = hex2[:b]
-    adj = false
-    adj = true if a1 == a2 && (b2 == b1-1 || b2 == b1+1)
-    adj = true if b1 == b2 && (a2 == a1-1 || a2 == a1+1)
-    adj = true if a1%2 == 0 && (a2 == a1-1 || a2 == a1+1) && b2 == b1+1
-    adj = true if a1%2 == 1 && (a2 == a1-1 || a2 == a1+1) && b2 == b1-1
-    adj    
-  end
-
-
-  # Make a vector of n hexes in a row in direction dir
-  def make_vector(hex,dir,n)
-    vector = [hex]
-    hh = hex
-    1.upto(n-1) do
-      hh = next_hex(hh,dir)
-      vector << hh
-    end
-    vector
-  end
-
-
-  def next_hex(hex,dir)
-    nxt = {}
-    if hex == nil
-      nxt = nil
-    else
-      a = hex[:a]
-      b = hex[:b]
-      nxt = nil if a == nil || b == nil
-    end
-    if nxt != nil
-      case dir
-      when :no_go
-        nxt[:a] = a
-        nxt[:b] = b
-      when :N
-        nxt[:a] = a
-        nxt[:b] = b-1
-      when :NE
-        nxt[:a] = a+1
-        nxt[:b] = b-a%2
-      when :SE
-        nxt[:a] = a+1
-        nxt[:b] = b-a%2+1
-      when :S
-        nxt[:a] = a
-        nxt[:b] = b+1
-      when :SW
-        nxt[:a] = a-1
-        nxt[:b] = b-a%2+1
-      when :NW
-        nxt[:a] = a-1
-        nxt[:b] = b-a%2
-      else
-        nxt = nil
-      end
-      nxt = nil if nxt[:a]<0 || nxt[:a]>HEX_DIM_EW || nxt[:b]<0 || nxt[:b]>HEX_DIM_NS
-    end
-    nxt
-  end
-
-
-  def int_random(j,k,mode)
-    j+rand(k-j+1)    
-  end
-
-
-  def array_pick_random(arr,mode)
-    arr.shuffle!
-    arr.pop
-  end
-
-
-  # This method is called by an erb statement in an application template. It
-  # calls build_terrain to generate the terrain map, then converts it to a
-  # string. The erb code embeds the string in a data field in a tag in the
-  # DOM, where it can be accessed by the javascript/coffeescript for display.
-  def terrain_string
-    str = ""
-    @terrain = build_terrain
-    @terrain.each do |t|
-      t.each {|hex| str << encode(hex)}
-    end
-    str
-  end
-
-
-  # encode elevation values to a one-character code
-  def encode(elev)
-    values = {
-      elev_10: "a",
-      elev_20: "b",
-      elev_30: "c",
-      elev_40: "d",
-      elev_50: "e",
-      elev_60: "f",
-      elev_70: "g",
-      elev_80: "h",
-      elev_90: "i",
-      elev_100: "j",
-      elev_110: "k",
-      elev_120: "l",
-      elev_130: "m",
-      elev_140: "n", 
-      water_10: "A",
-      water_20: "B",
-      water_30: "C",
-      water_40: "D",
-      water_50: "E",
-      water_60: "F",
-      water_70: "G",
-      water_80: "H",
-      water_90: "I",
-      water_100: "J",
-      water_110: "K",
-      water_120: "L",
-      water_130: "M",
-      water_140: "N",
-      water: "A",
-      zone: "Z" }
-    ch = values.fetch(elev,:no_data)
-    ch = "x" if ch == :no_data
-    ch
-  end
-
 end
 
 
 
-helpers TerrainHelper, RiverTopoGrid
+def terrain_string
+  @map = TerrainMap.new
+  @map.to_dom_string
+end
 
+def topo_string
+  @r_topo = @map.rivers.river_topo
+  @r_topo.to_dom_string
+end
+
+def get_m
+  @r_topo.m
+end
+
+def get_n
+  @r_topo.n
+end
 
 
