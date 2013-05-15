@@ -53,41 +53,93 @@ end
 
 
 
-class RiverTopoGrid
+class TopoGrid
+
+  attr :cells, :cx_list
 
   def initialize
-    # grid size = @m x @n
-    @m = 5
-    @n = 3
+    @cells = []
     @cx_list = []
+  end
 
-    @compass = [:N,:E,:S,:W]
-    @grid = [nil]
+
+  def set_cell(j,k,key,value)
+    cell = get_cell(j,k)
+    if cell == nil
+      cell = {s: j, t: k}
+      @cells << cell
+    end
+    cell[key] = value if cell.class == Hash
+  end
+
+
+  def get_cell(j,k)
+    @cells.find {|cc| cc[:s] == j && cc[:t] == k}
+  end
+
+
+  def get_all_cells
+    @cells
+  end
+
+
+end
+
+
+
+class SquareTopoGrid < TopoGrid
+  
+  attr :m, :n
+
+  def initialize(m,n)
+    super()
+    @m = m
+    @n = n
+
     1.upto(@m) do |j|
-      cc = [nil]
       1.upto(@n) do |k|
         zz = {s: j, t: k, N: :blank, E: :blank, S: :blank, W: :blank}
-        cc << zz
+        @cells << zz
       end
-      @grid[j] = cc
     end
 
     # block edges
-    1.upto(@m) {|j| set_grid(j,1,:N,:blocked)}
-    1.upto(@n) {|k| set_grid(1,k,:W,:blocked)}
-    1.upto(@n) {|k| set_grid(@m,k,:E,:blocked)}
+    @cells.each do |cc|
+      cc[:N] = :blocked if cc[:t] == 1
+      cc[:W] = :blocked if cc[:s] == 1
+      cc[:E] = :blocked if cc[:s] == @m
+      cc[:S] = :blocked if cc[:t] == @n
+    end
+
+  end
+
+
+end
+
+
+
+class RiverTopoGrid < SquareTopoGrid
+
+  def initialize
+    super(5,3)
 
     # set mouth
     @mouth = 2+rand(@m-2)
-    set_grid(@mouth,@n,:S,:connect)
-    set_grid(@mouth,@n+1,:s,@mouth)
-    set_grid(@mouth,@n+1,:t,@n+1)
-    set_grid(@mouth,@n+1,:N,:connect)
-    set_grid(@mouth,@n+1,:is_mouth,true)
+    set_cell(@mouth,@n,:S,:connect)
+    set_cell(@mouth,@n+1,:s,@mouth)
+    set_cell(@mouth,@n+1,:t,@n+1)
+    set_cell(@mouth,@n+1,:N,:connect)
+    set_cell(@mouth,@n+1,:is_mouth,true)
+
+
+    ##   ##   ##   ##
+
+    ##   ##   ##   ##
+
 
     # build first segment with "mouth" cell as root
     @root = 0
-    set_grid(@mouth,@n,:seg,@root)
+    set_cell(@mouth,@n,:seg,@root)
     @root_s = @mouth
     @root_t = @n
     root_node = {s: @root_s, t: @root_t}
@@ -95,8 +147,6 @@ class RiverTopoGrid
     @segments = []
     @segments[@root] = @tree
 
-    # set rest of bottom row to :blocked
-    1.upto(@m) {|j| set_grid(j,@n,:S,:blocked) unless j == @mouth}
 
     # build list of available connections
     @open_list = []
@@ -113,18 +163,18 @@ class RiverTopoGrid
       end
     end
 
-    # iterate through connections until empty
+    # iterate randomly through connections until empty
     until @open_list == []
       @open_list.shuffle!
       connection = @open_list.pop
       s1 = connection[:s1]
       t1 = connection[:t1]
       dir1 = connection[:dir1]
-      seg1 = @grid[s1][t1][:seg]
+      seg1 = get_cell(s1,t1)[:seg]
       s2 = connection[:s2]
       t2 = connection[:t2]
       dir2 = connection[:dir2]
-      seg2 = @grid[s2][t2][:seg]
+      seg2 = get_cell(s2,t2)[:seg]
 
       # determine if cells in new connections
       # are already part of segments
@@ -141,18 +191,18 @@ class RiverTopoGrid
       # existing segment as appropriate
       when :new_seg
         seg = @segments.length
-        set_grid(s1,t1,:seg,seg)
-        set_grid(s2,t2,:seg,seg)
+        set_cell(s1,t1,:seg,seg)
+        set_cell(s2,t2,:seg,seg)
         br = [ {s: s1, t: t1},{s: s2, t: t2} ]
         @segments << br
       when :add_c1_to_seg2
-        set_grid(s1,t1,:seg,seg2)
+        set_cell(s1,t1,:seg,seg2)
         br = @segments[seg2]
         cc = {s: s1, t: t1}
         br << cc
         @segments[seg2] = br
       when :add_c2_to_seg1
-        set_grid(s2,t2,:seg,seg1)
+        set_cell(s2,t2,:seg,seg1)
         br = @segments[seg1]
         cc = {s: s2, t: t2}
         br << cc
@@ -162,7 +212,7 @@ class RiverTopoGrid
         segx = [seg1,seg2].max
         brx = @segments[segx]
         brx.each do |cc|
-          set_grid(cc[:s],cc[:t],:seg,seg)
+          set_cell(cc[:s],cc[:t],:seg,seg)
           cc[:seg] = seg
         end
         combo = @segments[seg1]+@segments[seg2]
@@ -173,56 +223,23 @@ class RiverTopoGrid
       end
 
       if status != :no_connect
-        set_grid(s1,t1,dir1,:connect)
-        set_grid(s2,t2,dir2,:connect)
+        set_cell(s1,t1,dir1,:connect)
+        set_cell(s2,t2,dir2,:connect)
         add_connection(s1,t1,s2,t2,dir1,dir2)
       end
     end
+
+# TODO REVIEW: We have an add_connection method in one class and an add_connector method in another.
 
     add_connection(@mouth,@n,@mouth,@n+1,:S,:N)
   end
 
 
-  def m
-    @m
-  end
-
-
-  def n
-    @n
-  end
-
-
-  def cx_list
-    @cx_list
-  end
-
-
-  def set_grid(j,k,key,value)
-    @grid[j][k] ||= {}
-    cell = @grid[j][k]
-    cell[key] = value if cell.class == Hash
-    @grid[j][k] = cell
-  end
-
-
-  def get_all_cells
-    all_cells = @grid == nil ? [] : @grid.flatten.compact
-    all_cells
-  end
-
+# TODO OPTIMIZE REVIEW: Maybe we can extend this to always put the directions in the same order, so we don't have to do things like "if E then hex1 else hex2" later on.
 
   def add_connection(s1,t1,s2,t2,dir1,dir2)
     cx = {s1: s1, t1: t1, dir1: dir1, s2: s2, t2: t2, dir2: dir2}
     @cx_list << cx
-  end
-
-
-  def mark_connection_zone(s,t,dir,hex)
-    c1 = cx_list.find {|cc| cc[:s1] == s && cc[:t1] == t && cc[:dir1] == dir}
-    c2 = cx_list.find {|cc| cc[:s2] == s && cc[:t2] == t && cc[:dir2] == dir}
-    c1[:hex1] = hex unless c1 == nil
-    c2[:hex2] = hex unless c2 == nil
   end
 
 
@@ -233,7 +250,7 @@ class RiverTopoGrid
     1.upto(@n) do |k|
       1.upto(@m) do |j|
         cell = @grid[j][k]
-        @compass.each do |dir|
+        [:N,:E,:S,:W].each do |dir|
           sym = cell[dir] if cell.respond_to? :[]
           ch = sym == :connect ? "c" : "x"
           str << ch
@@ -250,9 +267,9 @@ end
 
 class HexGrid
 
-  #   Map Constants
-  #   Current map dimensions are 41 hexes East to West [0..40] and 23 hexes
-  #   North to South [0.22].
+  # Map Constants
+  # Current map dimensions are 41 hexes East to West [0..40] and 23 hexes
+  # North to South [0.22].
   HEX_DIM_EW = 40
   HEX_DIM_NS = 22
 
@@ -269,6 +286,11 @@ class HexGrid
 
   def fill(value)
     0.upto(HEX_DIM_EW) {|i| @grid[i] = [value]*(HEX_DIM_NS+1)}
+  end
+
+
+  def mark_hexes(value,hexes)
+    hexes.each {|hx| put(hx,value)} unless hexes == nil
   end
 
 
@@ -356,7 +378,7 @@ class HexGrid
     adj = true if b1 == b2 && (a2 == a1-1 || a2 == a1+1)
     adj = true if a1%2 == 0 && (a2 == a1-1 || a2 == a1+1) && b2 == b1+1
     adj = true if a1%2 == 1 && (a2 == a1-1 || a2 == a1+1) && b2 == b1-1
-    adj    
+    adj
   end
 
 
@@ -470,7 +492,7 @@ class TerrainMap < HexGrid
       elev_110: "k",
       elev_120: "l",
       elev_130: "m",
-      elev_140: "n", 
+      elev_140: "n",
       water_10: "A",
       water_20: "B",
       water_30: "C",
@@ -498,6 +520,23 @@ end
 
 
 class RiverMap < HexGrid
+
+  CX_PATTERN_OPTIONS = { mouth: :cx_river_mouth,
+                         Nxxx: :cx_stub_n,
+                         xExx: :cx_stub_e,
+                         xxSx: :cx_stub_s,
+                         xxxW: :cx_stub_w,
+                         NESW: [:cx_4_a, :cx_4_b],
+                         NESx: [:cx_rt_a, :cx_rt_b],
+                         NxSW: [:cx_lft_a, :cx_lft_b],
+                         NxSx: :cx_vert,
+                         xExW: [:cx_hrz_a, :cx_hrz_b],
+                         xESW: :cx_dn,
+                         NExW: :cx_up,
+                         NExx: :cx_n_e,
+                         xESx: :cx_s_e,
+                         xxSW: :cx_s_w,
+                         NxxW: :cx_n_w }
 
   # River Branch Connector Templates:
   # These templates give hex patterns for different kinds of river junctions.
@@ -600,12 +639,16 @@ class RiverMap < HexGrid
     # generate a model for the topology of river branching
     @river_topo = RiverTopoGrid.new
 
+    # extract the list of cell to cell connections from the topology model
+    cx_list = @river_topo.cx_list
+
     # add river branching points corresponding to the topology designated
-    # in the 'river topo grid' 
+    # in the 'river topo grid'
+
     @river_topo.get_all_cells.each {|cell| add_connector(cell)}
 
     # connect the branching points to each other
-    @river_topo.cx_list.each {|cx| connect_cx(cx)}
+    cx_list.each {|cx| connect_cx(cx)}
 
     # generate water elevation
     generate_water_elevation(@rivers)
@@ -620,25 +663,26 @@ class RiverMap < HexGrid
 
   # place a river connector (branch point) on the terrain map in the zone
   # corresponding to a cell in the river topo grid
-  def add_connector(cell)
-    pattern = get_pattern(cell)
-    start = get_start_point(cell,pattern)
-    prior_hexes = []
+  def add_connector(topo_cell)
+    connector = HexConnector.new(topo_cell)
+    mark_hexes(:water, connector.get_hexes)
 
-    # starting at the 'start point' hex, follow the pattern to build the connector
-    template = CX_TEMPLATES[pattern]
-    template.each do |step|
-      src = step[:src]
-      dir = step[:dir]
-      id = step[:id]
-      h0 = src == :origin ? {a: start[:a], b: start[:b]} : prior_hexes[src]
-      hex = next_hex(h0,dir)
-      prior_hexes << hex
 
-      put(hex,:water)
-      @river_topo.mark_connection_zone(cell[:s],cell[:t],id,hex) unless id == nil
+# TODO This is where we got our 'nil' error last time
+    connector.get_connection_points.each_pair do |dir,hex|
+      mark_connection_zone(topo_cell[:s],topo_cell[:t],dir,hex)
     end
   end
+
+
+  def mark_connection_zone(s,t,dir,hex)
+    c1 = cx_list.find {|cc| cc[:s1] == s && cc[:t1] == t && cc[:dir1] == dir}
+    c2 = cx_list.find {|cc| cc[:s2] == s && cc[:t2] == t && cc[:dir2] == dir}
+    c1[:hex1] = hex unless c1 == nil
+    c2[:hex2] = hex unless c2 == nil
+  end
+
+
 
 
   def get_start_point(cell,pattern)
@@ -667,40 +711,9 @@ class RiverMap < HexGrid
     cx[1] = "E" if cell[:E] == :connect
     cx[2] = "S" if cell[:S] == :connect
     cx[3] = "W" if cell[:W] == :connect
-    case cx
-    when "Nxxx"
-      pattern = cell[:is_mouth] == true ? :cx_river_mouth : :cx_stub_n
-    when "xExx"
-      pattern = :cx_stub_e
-    when "xxSx"
-      pattern = :cx_stub_s
-    when "xxxW"
-      pattern = :cx_stub_w
-    when "NESW"
-      pattern = rand(2) == 0 ? :cx_4_a : :cx_4_b
-    when "NESx"
-      pattern = rand(2) == 0 ? :cx_rt_a : :cx_rt_b
-    when "NxSW"
-      pattern = rand(2) == 0 ? :cx_lft_a : :cx_lft_b
-    when "NxSx"
-      pattern = :cx_vert
-    when "xExW"
-      pattern = rand(2) == 0 ? :cx_hrz_a : :cx_hrz_b
-    when "xESW"
-      pattern = :cx_dn
-    when "NExW"
-      pattern = :cx_up
-    when "NExx"
-      pattern = :cx_n_e
-    when "xESx"
-      pattern = :cx_s_e
-    when "xxSW"
-      pattern = :cx_s_w
-    when "NxxW"
-      pattern = :cx_n_w
-    else pattern = nil
-    end
-  pattern
+    cx = "mouth" if cell[:is_mouth] == true
+    pattern = select_random_match(cx.to_sym,CX_PATTERN_OPTIONS)
+    pattern
   end
 
 
@@ -871,6 +884,109 @@ class RiverMap < HexGrid
 
 end
 
+
+
+class TopoCell
+
+end
+
+
+
+# A HexConnector object is a set of one or more adjacent hexes that serve as
+# a junction point to connect two or more segments in a hex grid map, or to
+# terminate a single segment. A HexConnector object corresponds to a cell in
+# the topo grid.
+class HexConnector
+
+  attr :topo_grid_cell, :hexes, :connect_points
+
+  def initialize(topo_cell)
+    @topo_grid_cell = topo_cell
+    @hexes = []
+    @connect_points = {N: nil, E: nil, S: nil, W: nil}
+  end
+
+
+  def get_hexes
+    @hexes
+  end
+
+
+# TODO complete this method
+
+  def get_connection_points
+    nil
+  end
+
+
+  def build_hexes
+
+    @pattern = get_pattern(@cell)
+    start = get_start_point(@cell,@pattern)
+    prior_hexes = []
+
+    # starting at the 'start point' hex, follow the pattern to build the connector
+    template = CX_TEMPLATES[pattern]
+    template.each do |step|
+      src = step[:src]
+      dir = step[:dir]
+
+      h0 = src == :origin ? {a: start[:a], b: start[:b]} : prior_hexes[src]
+      hex = next_hex(h0,dir)
+      prior_hexes << hex
+
+      connect_points[dir] = step[:id] if step[:id] != nil
+
+      put(hex,:water)
+    end
+  end
+
+
+  # determine the connector pattern for a cell in the river topo grid
+  def get_pattern(cell)
+    cx = "xxxx"
+    cx[0] = "N" if cell[:N] == :connect
+    cx[1] = "E" if cell[:E] == :connect
+    cx[2] = "S" if cell[:S] == :connect
+    cx[3] = "W" if cell[:W] == :connect
+    cx = "mouth" if cell[:is_mouth] == true
+    pattern = select_random_match(cx.to_sym,CX_PATTERN_OPTIONS)
+    pattern
+  end
+
+
+  def get_start_point(pattern,cell)
+    s = cell[:s]
+    t = cell[:t]
+
+    # (the '+3' and '+2' are to temporarily set all connectors to a set spot
+    #   in the zone, later we'll set them at random locations within the zone)
+    aa = (s-1)*RT_ZONE_WIDTH+3
+    bb = (t-1)*RT_ZONE_HEIGHT+2
+
+    # for the river mouth, use special values
+    if pattern == :cx_river_mouth
+      aa = aa+1
+      bb = HEX_DIM_NS
+    end
+
+    {a: aa, b: bb}
+  end
+
+
+end
+
+
+
+# returns value attached to the given key or, if key owns an array with
+# multiple values, selects one of those values at random
+def select_random_match(key,options_hash)
+  mm = options_hash[key]
+  match = nil if mm == nil
+  match = mm if mm.class == Symbol
+  match = mm[rand(mm.size)] if mm.class == Array
+  match
+end
 
 
 def terrain_string
