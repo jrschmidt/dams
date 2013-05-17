@@ -17,41 +17,6 @@ get '/javascripts/dams.js' do
 end
 
 
-  LAND_SYMBOLS = [
-    :elev_10,
-    :elev_20,
-    :elev_30,
-    :elev_40,
-    :elev_50,
-    :elev_60,
-    :elev_70,
-    :elev_80,
-    :elev_90,
-    :elev_100,
-    :elev_110,
-    :elev_120,
-    :elev_130,
-    :elev_140 ] 
-
-  WATER_SYMBOLS = [
-    :water,
-    :water_10,
-    :water_20,
-    :water_30,
-    :water_40,
-    :water_50,
-    :water_60,
-    :water_70,
-    :water_80,
-    :water_90,
-    :water_100,
-    :water_110,
-    :water_120,
-    :water_130,
-    :water_140,
-    :zone ]
-
-
 
 class TopoGrid
 
@@ -131,12 +96,6 @@ class RiverTopoGrid < SquareTopoGrid
     set_cell(@mouth,@n+1,:N,:connect)
     set_cell(@mouth,@n+1,:is_mouth,true)
 
-
-    ##   ##   ##   ##
-
-    ##   ##   ##   ##
-
-
     # build first segment with "mouth" cell as root
     @root = 0
     set_cell(@mouth,@n,:seg,@root)
@@ -146,7 +105,6 @@ class RiverTopoGrid < SquareTopoGrid
     @tree = [root_node]
     @segments = []
     @segments[@root] = @tree
-
 
     # build list of available connections
     @open_list = []
@@ -218,26 +176,20 @@ class RiverTopoGrid < SquareTopoGrid
         combo = @segments[seg1]+@segments[seg2]
         @segments[seg] = combo
         @segments[segx] = []
-      when :no_connect
-
       end
 
       if status != :no_connect
         set_cell(s1,t1,dir1,:connect)
         set_cell(s2,t2,dir2,:connect)
-        add_connection(s1,t1,s2,t2,dir1,dir2)
+        add_topo_connection(s1,t1,s2,t2,dir1,dir2)
       end
     end
 
-# TODO REVIEW: We have an add_connection method in one class and an add_connector method in another.
-
-    add_connection(@mouth,@n,@mouth,@n+1,:S,:N)
+    add_topo_connection(@mouth,@n,@mouth,@n+1,:S,:N)
   end
 
 
-# TODO OPTIMIZE REVIEW: Maybe we can extend this to always put the directions in the same order, so we don't have to do things like "if E then hex1 else hex2" later on.
-
-  def add_connection(s1,t1,s2,t2,dir1,dir2)
+  def add_topo_connection(s1,t1,s2,t2,dir1,dir2)
     cx = {s1: s1, t1: t1, dir1: dir1, s2: s2, t2: t2, dir2: dir2}
     @cx_list << cx
   end
@@ -265,13 +217,48 @@ end
 
 
 
-class HexGrid
+class HexMapGrid
 
   # Map Constants
+
   # Current map dimensions are 41 hexes East to West [0..40] and 23 hexes
   # North to South [0.22].
   HEX_DIM_EW = 40
   HEX_DIM_NS = 22
+
+  LAND_SYMBOLS = [
+    :elev_10,
+    :elev_20,
+    :elev_30,
+    :elev_40,
+    :elev_50,
+    :elev_60,
+    :elev_70,
+    :elev_80,
+    :elev_90,
+    :elev_100,
+    :elev_110,
+    :elev_120,
+    :elev_130,
+    :elev_140 ] 
+
+  WATER_SYMBOLS = [
+    :water,
+    :water_10,
+    :water_20,
+    :water_30,
+    :water_40,
+    :water_50,
+    :water_60,
+    :water_70,
+    :water_80,
+    :water_90,
+    :water_100,
+    :water_110,
+    :water_120,
+    :water_130,
+    :water_140,
+    :zone ]
 
   def initialize
     @grid = []
@@ -330,7 +317,7 @@ class HexGrid
   end
 
 
-  # merge data from another HexGrid object with this one
+  # merge data from another HexMapGrid object with this one
   def add_data(hex_grid2,mode)
     case mode
     when :rivers
@@ -439,7 +426,7 @@ end
 
 
 
-class TerrainMap < HexGrid
+class TerrainMap < HexMapGrid
 
   DEFAULT_ELEV_VALUE = :elev_60
 
@@ -519,7 +506,7 @@ end
 
 
 
-class RiverMap < HexGrid
+class RiverMap < HexMapGrid
 
   def initialize
     super
@@ -533,7 +520,6 @@ class RiverMap < HexGrid
 
     # add river branching points corresponding to the topology designated
     # in the 'river topo grid'
-
     @river_topo.get_all_cells.each {|cell| add_connector(cell)}
 
     # connect the branching points to each other
@@ -550,22 +536,18 @@ class RiverMap < HexGrid
   end
 
 
-# TODO This method needs to put the connecting hexes for the "river connectors" in a list somewhere, associated with their corresponding cx connection object (which probably needs to be made into an actual object, anyway)
-
   # place a river connector (branch point) on the terrain map in the zone
   # corresponding to a cell in the river topo grid
   def add_connector(topo_cell)
     connector = HexConnector.new(topo_cell,self)
     mark_hexes(:water, connector.get_hexes)
     connector.get_connection_points.each_pair do |dir,hex|
-
       s = topo_cell[:s]
       t = topo_cell[:t]
       c1 = @cx_list.find {|cc| cc[:s1] == s && cc[:t1] == t && cc[:dir1] == dir}
       c2 = @cx_list.find {|cc| cc[:s2] == s && cc[:t2] == t && cc[:dir2] == dir}
       c1[:hex1] = hex unless c1 == nil
       c2[:hex2] = hex unless c2 == nil
-
     end
   end
 
@@ -966,7 +948,7 @@ class HexConnector
     # for the river mouth, use special values
     if pattern == :cx_river_mouth
       aa = aa+1
-      bb = HexGrid::HEX_DIM_NS
+      bb = HexMapGrid::HEX_DIM_NS
     end
 
     {a: aa, b: bb}
@@ -977,7 +959,7 @@ end
 
 
 
-# returns value attached to the given key or, if key owns an array with
+# returns the value attached to the given key or, if key owns an array with
 # multiple values, selects one of those values at random
 def select_random_match(key,options_hash)
   mm = options_hash[key]
