@@ -249,7 +249,7 @@ class RiverTopoGrid < SquareTopoGrid
     str = ""
     1.upto(@n) do |k|
       1.upto(@m) do |j|
-        cell = @grid[j][k]
+        cell = get_cell(j,k)
         [:N,:E,:S,:W].each do |dir|
           sym = cell[dir] if cell.respond_to? :[]
           ch = sym == :connect ? "c" : "x"
@@ -521,117 +521,6 @@ end
 
 class RiverMap < HexGrid
 
-  CX_PATTERN_OPTIONS = { mouth: :cx_river_mouth,
-                         Nxxx: :cx_stub_n,
-                         xExx: :cx_stub_e,
-                         xxSx: :cx_stub_s,
-                         xxxW: :cx_stub_w,
-                         NESW: [:cx_4_a, :cx_4_b],
-                         NESx: [:cx_rt_a, :cx_rt_b],
-                         NxSW: [:cx_lft_a, :cx_lft_b],
-                         NxSx: :cx_vert,
-                         xExW: [:cx_hrz_a, :cx_hrz_b],
-                         xESW: :cx_dn,
-                         NExW: :cx_up,
-                         NExx: :cx_n_e,
-                         xESx: :cx_s_e,
-                         xxSW: :cx_s_w,
-                         NxxW: :cx_n_w }
-
-  # River Branch Connector Templates:
-  # These templates give hex patterns for different kinds of river junctions.
-  # Within an individual template array, there is one hash for each hex in that
-  # pattern. :src is the index number in the array to move from to get the next
-  # hex in the pattern. A value of :origin for the key :src means move from the
-  # starting hex for that pattern instead. The "starting hex" may be empty in
-  # some patterns. A value of :no_go for the key :dir means start at the origin
-  # hex. The :id key has a value of :N, :S, :E or :W if it is the north, south,
-  # east or west connector hex for that pattern.
-  CX_TEMPLATES = {
-    :cx_stub_n => [{src: :origin, dir: :no_go, id: :N}],
-    :cx_stub_e => [{src: :origin, dir: :no_go, id: :E}],
-    :cx_stub_s => [{src: :origin, dir: :no_go, id: :S}],
-    :cx_stub_w => [{src: :origin, dir: :no_go, id: :W}],
-
-    :cx_vert => [{src: :origin, dir: :no_go, id: :N},
-                 {src: 0, dir: :S, id: :S}],
-
-    :cx_hrz_a => [{src: :origin, dir: :S, id: :W},
-                  {src: 0, dir: :NE, id: :E}],
-
-    :cx_hrz_b => [{src: :origin, dir: :no_go, id: :W},
-                  {src: 0, dir: :SE, id: :E}],
-
-    :cx_n_e => [{src: :origin, dir: :no_go, id: :N},
-                {src: 0, dir: :S, id: nil},
-                {src: 1, dir: :SE, id: :E}],
-
-    :cx_s_e => [{src: :origin, dir: :SE, id: :E},
-                {src: 0, dir: :SW, id: nil},
-                {src: 1, dir: :S, id: :S}],
-
-    :cx_s_w => [{src: :origin, dir: :no_go, id: :W},
-                {src: 0, dir: :SE, id: nil},
-                {src: 1, dir: :S, id: :S}],
-
-    :cx_n_w => [{src: :origin, dir: :SE, id: :N},
-                {src: 0, dir: :S, id: nil},
-                {src: 1, dir: :SW, id: :W}],
-
-    :cx_dn => [{src: :origin, dir: :no_go, id: :W},
-               {src: 0, dir: :SE, id: nil},
-               {src: 1, dir: :S, id: :S},
-               {src: 1, dir: :NE, id: :E}],
-
-    :cx_up => [{src: :origin, dir: :SE, id: :N},
-               {src: 0, dir: :S, id: nil},
-               {src: 1, dir: :SW, id: :W},
-               {src: 1, dir: :SE, id: :E}],
-
-    :cx_rt_a => [{src: :origin, dir: :no_go, id: :N},
-                 {src: 0, dir: :S, id: nil},
-                 {src: 1, dir: :SE, id: nil},
-                 {src: 2, dir: :S, id: :S},
-                 {src: 2, dir: :NE, id: :E}],
-
-    :cx_rt_b => [{src: :origin, dir: :SE, id: :N},
-                 {src: 0, dir: :S, id: nil},
-                 {src: 1, dir: :SE, id: :E},
-                 {src: 1, dir: :SW, id: nil},
-                 {src: 3, dir: :S, id: :S}],
-
-    :cx_lft_a => [{src: :origin, dir: :S, id: :W},
-                  {src: 0, dir: :SE, id: nil},
-                  {src: 1, dir: :S, id: :S},
-                  {src: 1, dir: :NE, id: nil},
-                  {src: 3, dir: :N, id: :N}],
-
-    :cx_lft_b => [{src: :origin, dir: :SE, id: :N},
-                  {src: 0, dir: :S, id: nil},
-                  {src: 1, dir: :SW, id: :W},
-                  {src: 1, dir: :SE, id: nil},
-                  {src: 3, dir: :S, id: :S}],
-
-    :cx_4_a => [{src: :origin, dir: :SE, id: :N},
-                {src: 0, dir: :S, id: nil},
-                {src: 1, dir: :SW, id: :W},
-                {src: 1, dir: :SE, id: nil},
-                {src: 3, dir: :NE, id: :E},
-                {src: 3, dir: :S, id: :S}],
-
-    :cx_4_b => [{src: :origin, dir: :S, id: :W},
-                {src: 0, dir: :SE, id: nil},
-                {src: 1, dir: :S, id: :S},
-                {src: 1, dir: :NE, id: nil},
-                {src: 3, dir: :N, id: :N},
-                {src: 3, dir: :SE, id: :E}],
-
-    :cx_river_mouth => [{src: :origin, dir: :no_go, id: nil},
-                        {src: 0, dir: :N, id: :N}] }
-
-  RT_ZONE_WIDTH = 8
-  RT_ZONE_HEIGHT = 8
-
   def initialize
     super
     fill(:no_data)
@@ -640,7 +529,7 @@ class RiverMap < HexGrid
     @river_topo = RiverTopoGrid.new
 
     # extract the list of cell to cell connections from the topology model
-    cx_list = @river_topo.cx_list
+    @cx_list = @river_topo.cx_list
 
     # add river branching points corresponding to the topology designated
     # in the 'river topo grid'
@@ -648,7 +537,7 @@ class RiverMap < HexGrid
     @river_topo.get_all_cells.each {|cell| add_connector(cell)}
 
     # connect the branching points to each other
-    cx_list.each {|cx| connect_cx(cx)}
+    @cx_list.each {|cx| connect_cx(cx)}
 
     # generate water elevation
     generate_water_elevation(@rivers)
@@ -661,28 +550,24 @@ class RiverMap < HexGrid
   end
 
 
+# TODO This method needs to put the connecting hexes for the "river connectors" in a list somewhere, associated with their corresponding cx connection object (which probably needs to be made into an actual object, anyway)
+
   # place a river connector (branch point) on the terrain map in the zone
   # corresponding to a cell in the river topo grid
   def add_connector(topo_cell)
-    connector = HexConnector.new(topo_cell)
+    connector = HexConnector.new(topo_cell,self)
     mark_hexes(:water, connector.get_hexes)
-
-
-# TODO This is where we got our 'nil' error last time
     connector.get_connection_points.each_pair do |dir,hex|
-      mark_connection_zone(topo_cell[:s],topo_cell[:t],dir,hex)
+
+      s = topo_cell[:s]
+      t = topo_cell[:t]
+      c1 = @cx_list.find {|cc| cc[:s1] == s && cc[:t1] == t && cc[:dir1] == dir}
+      c2 = @cx_list.find {|cc| cc[:s2] == s && cc[:t2] == t && cc[:dir2] == dir}
+      c1[:hex1] = hex unless c1 == nil
+      c2[:hex2] = hex unless c2 == nil
+
     end
   end
-
-
-  def mark_connection_zone(s,t,dir,hex)
-    c1 = cx_list.find {|cc| cc[:s1] == s && cc[:t1] == t && cc[:dir1] == dir}
-    c2 = cx_list.find {|cc| cc[:s2] == s && cc[:t2] == t && cc[:dir2] == dir}
-    c1[:hex1] = hex unless c1 == nil
-    c2[:hex2] = hex unless c2 == nil
-  end
-
-
 
 
   def get_start_point(cell,pattern)
@@ -896,14 +781,130 @@ end
 # a junction point to connect two or more segments in a hex grid map, or to
 # terminate a single segment. A HexConnector object corresponds to a cell in
 # the topo grid.
+
 class HexConnector
 
-  attr :topo_grid_cell, :hexes, :connect_points
+  # River Branch Connector Templates:
+  # These templates give hex patterns for different kinds of river junctions.
+  # Within an individual template array, there is one hash for each hex in that
+  # pattern. :src is the index number in the array to move from to get the next
+  # hex in the pattern. A value of :origin for the key :src means move from the
+  # starting hex for that pattern instead. The "starting hex" may be empty in
+  # some patterns. A value of :no_go for the key :dir means start at the origin
+  # hex. The :id key has a value of :N, :S, :E or :W if it is the north, south,
+  # east or west connector hex for that pattern.
+  CX_PATTERN_OPTIONS = { mouth: :cx_river_mouth,
+                         Nxxx: :cx_stub_n,
+                         xExx: :cx_stub_e,
+                         xxSx: :cx_stub_s,
+                         xxxW: :cx_stub_w,
+                         NESW: [:cx_4_a, :cx_4_b],
+                         NESx: [:cx_rt_a, :cx_rt_b],
+                         NxSW: [:cx_lft_a, :cx_lft_b],
+                         NxSx: :cx_vert,
+                         xExW: [:cx_hrz_a, :cx_hrz_b],
+                         xESW: :cx_dn,
+                         NExW: :cx_up,
+                         NExx: :cx_n_e,
+                         xESx: :cx_s_e,
+                         xxSW: :cx_s_w,
+                         NxxW: :cx_n_w }
 
-  def initialize(topo_cell)
+# FIXME 'id' is a very bad name which doesn't really describe what that field does. 'Connect direction' is more accurate. Maybe change it to 'cx_dir'.
+
+  CX_TEMPLATES = {
+    :cx_stub_n => [{src: :origin, dir: :no_go, id: :N}],
+    :cx_stub_e => [{src: :origin, dir: :no_go, id: :E}],
+    :cx_stub_s => [{src: :origin, dir: :no_go, id: :S}],
+    :cx_stub_w => [{src: :origin, dir: :no_go, id: :W}],
+
+    :cx_vert => [{src: :origin, dir: :no_go, id: :N},
+                 {src: 0, dir: :S, id: :S}],
+
+    :cx_hrz_a => [{src: :origin, dir: :S, id: :W},
+                  {src: 0, dir: :NE, id: :E}],
+
+    :cx_hrz_b => [{src: :origin, dir: :no_go, id: :W},
+                  {src: 0, dir: :SE, id: :E}],
+
+    :cx_n_e => [{src: :origin, dir: :no_go, id: :N},
+                {src: 0, dir: :S, id: nil},
+                {src: 1, dir: :SE, id: :E}],
+
+    :cx_s_e => [{src: :origin, dir: :SE, id: :E},
+                {src: 0, dir: :SW, id: nil},
+                {src: 1, dir: :S, id: :S}],
+
+    :cx_s_w => [{src: :origin, dir: :no_go, id: :W},
+                {src: 0, dir: :SE, id: nil},
+                {src: 1, dir: :S, id: :S}],
+
+    :cx_n_w => [{src: :origin, dir: :SE, id: :N},
+                {src: 0, dir: :S, id: nil},
+                {src: 1, dir: :SW, id: :W}],
+
+    :cx_dn => [{src: :origin, dir: :no_go, id: :W},
+               {src: 0, dir: :SE, id: nil},
+               {src: 1, dir: :S, id: :S},
+               {src: 1, dir: :NE, id: :E}],
+
+    :cx_up => [{src: :origin, dir: :SE, id: :N},
+               {src: 0, dir: :S, id: nil},
+               {src: 1, dir: :SW, id: :W},
+               {src: 1, dir: :SE, id: :E}],
+
+    :cx_rt_a => [{src: :origin, dir: :no_go, id: :N},
+                 {src: 0, dir: :S, id: nil},
+                 {src: 1, dir: :SE, id: nil},
+                 {src: 2, dir: :S, id: :S},
+                 {src: 2, dir: :NE, id: :E}],
+
+    :cx_rt_b => [{src: :origin, dir: :SE, id: :N},
+                 {src: 0, dir: :S, id: nil},
+                 {src: 1, dir: :SE, id: :E},
+                 {src: 1, dir: :SW, id: nil},
+                 {src: 3, dir: :S, id: :S}],
+
+    :cx_lft_a => [{src: :origin, dir: :S, id: :W},
+                  {src: 0, dir: :SE, id: nil},
+                  {src: 1, dir: :S, id: :S},
+                  {src: 1, dir: :NE, id: nil},
+                  {src: 3, dir: :N, id: :N}],
+
+    :cx_lft_b => [{src: :origin, dir: :SE, id: :N},
+                  {src: 0, dir: :S, id: nil},
+                  {src: 1, dir: :SW, id: :W},
+                  {src: 1, dir: :SE, id: nil},
+                  {src: 3, dir: :S, id: :S}],
+
+    :cx_4_a => [{src: :origin, dir: :SE, id: :N},
+                {src: 0, dir: :S, id: nil},
+                {src: 1, dir: :SW, id: :W},
+                {src: 1, dir: :SE, id: nil},
+                {src: 3, dir: :NE, id: :E},
+                {src: 3, dir: :S, id: :S}],
+
+    :cx_4_b => [{src: :origin, dir: :S, id: :W},
+                {src: 0, dir: :SE, id: nil},
+                {src: 1, dir: :S, id: :S},
+                {src: 1, dir: :NE, id: nil},
+                {src: 3, dir: :N, id: :N},
+                {src: 3, dir: :SE, id: :E}],
+
+    :cx_river_mouth => [{src: :origin, dir: :no_go, id: nil},
+                        {src: 0, dir: :N, id: :N}] }
+
+  RT_ZONE_WIDTH = 8
+  RT_ZONE_HEIGHT = 8
+
+  attr :topo_grid_cell, :hex_grid, :hexes, :connect_points
+
+  def initialize(topo_cell,hex_grid)
     @topo_grid_cell = topo_cell
+    @hex_grid = hex_grid
     @hexes = []
     @connect_points = {N: nil, E: nil, S: nil, W: nil}
+    build_hexes
   end
 
 
@@ -912,17 +913,16 @@ class HexConnector
   end
 
 
-# TODO complete this method
-
   def get_connection_points
-    nil
+    cx_points = @connect_points.select {|dir,hex| hex != nil}
+    cx_points
   end
 
 
   def build_hexes
 
-    @pattern = get_pattern(@cell)
-    start = get_start_point(@cell,@pattern)
+    pattern = get_pattern(@topo_grid_cell)
+    start = get_start_point(@topo_grid_cell,pattern)
     prior_hexes = []
 
     # starting at the 'start point' hex, follow the pattern to build the connector
@@ -932,12 +932,11 @@ class HexConnector
       dir = step[:dir]
 
       h0 = src == :origin ? {a: start[:a], b: start[:b]} : prior_hexes[src]
-      hex = next_hex(h0,dir)
+      hex = @hex_grid.next_hex(h0,dir)
       prior_hexes << hex
+      connect_points[step[:id]] = hex if [:N, :E, :S, :W].include?(step[:id])
 
-      connect_points[dir] = step[:id] if step[:id] != nil
-
-      put(hex,:water)
+      @hex_grid.put(hex,:water)
     end
   end
 
@@ -955,7 +954,7 @@ class HexConnector
   end
 
 
-  def get_start_point(pattern,cell)
+  def get_start_point(cell,pattern)
     s = cell[:s]
     t = cell[:t]
 
@@ -967,7 +966,7 @@ class HexConnector
     # for the river mouth, use special values
     if pattern == :cx_river_mouth
       aa = aa+1
-      bb = HEX_DIM_NS
+      bb = HexGrid::HEX_DIM_NS
     end
 
     {a: aa, b: bb}
