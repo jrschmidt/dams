@@ -20,7 +20,7 @@ end
 
 class TopoGrid
 
-  attr :cells, :cx_list
+  attr :cx_list
 
   def initialize
     @cells = []
@@ -88,38 +88,12 @@ class RiverTopoGrid < SquareTopoGrid
   def initialize
     super(5,3)
 
-    # set mouth
-    @mouth = 2+rand(@m-2)
-    set_cell(@mouth,@n,:S,:connect)
-    set_cell(@mouth,@n+1,:s,@mouth)
-    set_cell(@mouth,@n+1,:t,@n+1)
-    set_cell(@mouth,@n+1,:N,:connect)
-    set_cell(@mouth,@n+1,:is_mouth,true)
+    set_river_mouth
 
     # build first segment with "mouth" cell as root
-    @root = 0
-    set_cell(@mouth,@n,:seg,@root)
-    @root_s = @mouth
-    @root_t = @n
-    root_node = {s: @root_s, t: @root_t}
-    @tree = [root_node]
-    @segments = []
-    @segments[@root] = @tree
+    build_river_mouth_topo_segment
 
-    # build list of available connections
-    @open_list = []
-    1.upto(@m-1) do |s|
-      1.upto(@n) do |t|
-        ct = {s1: s, t1: t, dir1: :E, s2: s+1, t2: t, dir2: :W}
-        @open_list << ct
-      end
-    end
-    1.upto(@m) do |s|
-      1.upto(@n-1) do |t|
-        ct = {s1: s, t1: t, dir1: :S, s2: s, t2: t+1, dir2: :N}
-        @open_list << ct
-      end
-    end
+    build_available_topo_connection_list
 
     # iterate randomly through connections until empty
     until @open_list == []
@@ -134,7 +108,7 @@ class RiverTopoGrid < SquareTopoGrid
       dir2 = connection[:dir2]
       seg2 = get_cell(s2,t2)[:seg]
 
-      # determine if cells in new connections
+      # determine if cells in new connection
       # are already part of segments
       if seg1 == nil
         status = seg2 == nil ? :new_seg : :add_c1_to_seg2
@@ -148,34 +122,14 @@ class RiverTopoGrid < SquareTopoGrid
       # join segments, create new segment, or add new connection to an
       # existing segment as appropriate
       when :new_seg
-        seg = @segments.length
-        set_cell(s1,t1,:seg,seg)
-        set_cell(s2,t2,:seg,seg)
-        br = [ {s: s1, t: t1},{s: s2, t: t2} ]
-        @segments << br
+        seg = new_topo_segment(s1,t1,s2,t2)
+        @segments << seg
       when :add_c1_to_seg2
-        set_cell(s1,t1,:seg,seg2)
-        br = @segments[seg2]
-        cc = {s: s1, t: t1}
-        br << cc
-        @segments[seg2] = br
+        add_cell_to_topo_segment(s1,t1,seg2)
       when :add_c2_to_seg1
-        set_cell(s2,t2,:seg,seg1)
-        br = @segments[seg1]
-        cc = {s: s2, t: t2}
-        br << cc
-        @segments[seg1] = br
+        add_cell_to_topo_segment(s2,t2,seg1)
       when :join_segs
-        seg = [seg1,seg2].min
-        segx = [seg1,seg2].max
-        brx = @segments[segx]
-        brx.each do |cc|
-          set_cell(cc[:s],cc[:t],:seg,seg)
-          cc[:seg] = seg
-        end
-        combo = @segments[seg1]+@segments[seg2]
-        @segments[seg] = combo
-        @segments[segx] = []
+        join_topo_segments(seg1,seg2)
       end
 
       if status != :no_connect
@@ -186,6 +140,78 @@ class RiverTopoGrid < SquareTopoGrid
     end
 
     add_topo_connection(@mouth,@n,@mouth,@n+1,:S,:N)
+  end
+
+
+  def set_river_mouth
+    @mouth = 2+rand(@m-2)
+    set_cell(@mouth,@n,:S,:connect)
+    set_cell(@mouth,@n+1,:s,@mouth)
+    set_cell(@mouth,@n+1,:t,@n+1)
+    set_cell(@mouth,@n+1,:N,:connect)
+    set_cell(@mouth,@n+1,:is_mouth,true)
+  end
+
+
+  # build first segment with "mouth" cell as root
+  def build_river_mouth_topo_segment
+    @root = 0
+    set_cell(@mouth,@n,:seg,@root)
+    @root_s = @mouth
+    @root_t = @n
+    root_node = {s: @root_s, t: @root_t}
+    @tree = [root_node]
+    @segments = []
+    @segments[@root] = @tree
+  end
+
+
+  def build_available_topo_connection_list
+    @open_list = []
+    1.upto(@m-1) do |s|
+      1.upto(@n) do |t|
+        ct = {s1: s, t1: t, dir1: :E, s2: s+1, t2: t, dir2: :W}
+        @open_list << ct
+      end
+    end
+    1.upto(@m) do |s|
+      1.upto(@n-1) do |t|
+        ct = {s1: s, t1: t, dir1: :S, s2: s, t2: t+1, dir2: :N}
+        @open_list << ct
+      end
+    end
+  end
+
+
+  def new_topo_segment(s1,t1,s2,t2)
+    seg_ctr = @segments.length
+    set_cell(s1,t1,:seg,seg_ctr)
+    set_cell(s2,t2,:seg,seg_ctr)
+    seg = [ {s: s1, t: t1},{s: s2, t: t2} ]
+    seg
+  end
+
+
+  def add_cell_to_topo_segment(s,t,seg)
+    set_cell(s,t,:seg,seg)
+    br = @segments[seg]
+    cc = {s: s, t: t}
+    br << cc
+    @segments[seg] = br
+  end
+
+
+  def join_topo_segments(seg1,seg2)
+    seg = [seg1,seg2].min
+    segx = [seg1,seg2].max
+    brx = @segments[segx]
+    brx.each do |cc|
+      set_cell(cc[:s],cc[:t],:seg,seg)
+      cc[:seg] = seg
+    end
+    combo = @segments[seg1]+@segments[seg2]
+    @segments[seg] = combo
+    @segments[segx] = []
   end
 
 
@@ -263,11 +289,6 @@ class HexMapGrid
   def initialize
     @grid = []
     fill(:no_data)
-  end
-
-
-  def grid
-    @grid
   end
 
 
@@ -430,21 +451,13 @@ class TerrainMap < HexMapGrid
 
   DEFAULT_ELEV_VALUE = :elev_60
 
+  attr :rivers
+
   def initialize
   super
   fill(:default_base_elev)
   @rivers = RiverMap.new
   add_data(@rivers,:rivers)
-  end
-
-
-  def rivers
-    @rivers
-  end
-
-
-  def get_map
-    @grid
   end
 
 
@@ -526,7 +539,7 @@ class RiverMap < HexMapGrid
     @cx_list.each {|cx| connect_cx(cx)}
 
     # generate water elevation
-    generate_water_elevation(@rivers)
+    generate_water_elevation
 
   end
 
@@ -744,16 +757,10 @@ class RiverMap < HexMapGrid
   end
 
 
-  def generate_water_elevation(river_grid)
+  def generate_water_elevation
 
   end
 
-
-end
-
-
-
-class TopoCell
 
 end
 
@@ -773,7 +780,7 @@ class HexConnector
   # hex in the pattern. A value of :origin for the key :src means move from the
   # starting hex for that pattern instead. The "starting hex" may be empty in
   # some patterns. A value of :no_go for the key :dir means start at the origin
-  # hex. The :id key has a value of :N, :S, :E or :W if it is the north, south,
+  # hex. The :cx_dir key has a value of :N, :S, :E or :W if it is the north, south,
   # east or west connector hex for that pattern.
   CX_PATTERN_OPTIONS = { mouth: :cx_river_mouth,
                          Nxxx: :cx_stub_n,
@@ -792,89 +799,87 @@ class HexConnector
                          xxSW: :cx_s_w,
                          NxxW: :cx_n_w }
 
-# FIXME 'id' is a very bad name which doesn't really describe what that field does. 'Connect direction' is more accurate. Maybe change it to 'cx_dir'.
-
   CX_TEMPLATES = {
-    :cx_stub_n => [{src: :origin, dir: :no_go, id: :N}],
-    :cx_stub_e => [{src: :origin, dir: :no_go, id: :E}],
-    :cx_stub_s => [{src: :origin, dir: :no_go, id: :S}],
-    :cx_stub_w => [{src: :origin, dir: :no_go, id: :W}],
+    :cx_stub_n => [{src: :origin, dir: :no_go, cx_dir: :N}],
+    :cx_stub_e => [{src: :origin, dir: :no_go, cx_dir: :E}],
+    :cx_stub_s => [{src: :origin, dir: :no_go, cx_dir: :S}],
+    :cx_stub_w => [{src: :origin, dir: :no_go, cx_dir: :W}],
 
-    :cx_vert => [{src: :origin, dir: :no_go, id: :N},
-                 {src: 0, dir: :S, id: :S}],
+    :cx_vert => [{src: :origin, dir: :no_go, cx_dir: :N},
+                 {src: 0, dir: :S, cx_dir: :S}],
 
-    :cx_hrz_a => [{src: :origin, dir: :S, id: :W},
-                  {src: 0, dir: :NE, id: :E}],
+    :cx_hrz_a => [{src: :origin, dir: :S, cx_dir: :W},
+                  {src: 0, dir: :NE, cx_dir: :E}],
 
-    :cx_hrz_b => [{src: :origin, dir: :no_go, id: :W},
-                  {src: 0, dir: :SE, id: :E}],
+    :cx_hrz_b => [{src: :origin, dir: :no_go, cx_dir: :W},
+                  {src: 0, dir: :SE, cx_dir: :E}],
 
-    :cx_n_e => [{src: :origin, dir: :no_go, id: :N},
-                {src: 0, dir: :S, id: nil},
-                {src: 1, dir: :SE, id: :E}],
+    :cx_n_e => [{src: :origin, dir: :no_go, cx_dir: :N},
+                {src: 0, dir: :S, cx_dir: nil},
+                {src: 1, dir: :SE, cx_dir: :E}],
 
-    :cx_s_e => [{src: :origin, dir: :SE, id: :E},
-                {src: 0, dir: :SW, id: nil},
-                {src: 1, dir: :S, id: :S}],
+    :cx_s_e => [{src: :origin, dir: :SE, cx_dir: :E},
+                {src: 0, dir: :SW, cx_dir: nil},
+                {src: 1, dir: :S, cx_dir: :S}],
 
-    :cx_s_w => [{src: :origin, dir: :no_go, id: :W},
-                {src: 0, dir: :SE, id: nil},
-                {src: 1, dir: :S, id: :S}],
+    :cx_s_w => [{src: :origin, dir: :no_go, cx_dir: :W},
+                {src: 0, dir: :SE, cx_dir: nil},
+                {src: 1, dir: :S, cx_dir: :S}],
 
-    :cx_n_w => [{src: :origin, dir: :SE, id: :N},
-                {src: 0, dir: :S, id: nil},
-                {src: 1, dir: :SW, id: :W}],
+    :cx_n_w => [{src: :origin, dir: :SE, cx_dir: :N},
+                {src: 0, dir: :S, cx_dir: nil},
+                {src: 1, dir: :SW, cx_dir: :W}],
 
-    :cx_dn => [{src: :origin, dir: :no_go, id: :W},
-               {src: 0, dir: :SE, id: nil},
-               {src: 1, dir: :S, id: :S},
-               {src: 1, dir: :NE, id: :E}],
+    :cx_dn => [{src: :origin, dir: :no_go, cx_dir: :W},
+               {src: 0, dir: :SE, cx_dir: nil},
+               {src: 1, dir: :S, cx_dir: :S},
+               {src: 1, dir: :NE, cx_dir: :E}],
 
-    :cx_up => [{src: :origin, dir: :SE, id: :N},
-               {src: 0, dir: :S, id: nil},
-               {src: 1, dir: :SW, id: :W},
-               {src: 1, dir: :SE, id: :E}],
+    :cx_up => [{src: :origin, dir: :SE, cx_dir: :N},
+               {src: 0, dir: :S, cx_dir: nil},
+               {src: 1, dir: :SW, cx_dir: :W},
+               {src: 1, dir: :SE, cx_dir: :E}],
 
-    :cx_rt_a => [{src: :origin, dir: :no_go, id: :N},
-                 {src: 0, dir: :S, id: nil},
-                 {src: 1, dir: :SE, id: nil},
-                 {src: 2, dir: :S, id: :S},
-                 {src: 2, dir: :NE, id: :E}],
+    :cx_rt_a => [{src: :origin, dir: :no_go, cx_dir: :N},
+                 {src: 0, dir: :S, cx_dir: nil},
+                 {src: 1, dir: :SE, cx_dir: nil},
+                 {src: 2, dir: :S, cx_dir: :S},
+                 {src: 2, dir: :NE, cx_dir: :E}],
 
-    :cx_rt_b => [{src: :origin, dir: :SE, id: :N},
-                 {src: 0, dir: :S, id: nil},
-                 {src: 1, dir: :SE, id: :E},
-                 {src: 1, dir: :SW, id: nil},
-                 {src: 3, dir: :S, id: :S}],
+    :cx_rt_b => [{src: :origin, dir: :SE, cx_dir: :N},
+                 {src: 0, dir: :S, cx_dir: nil},
+                 {src: 1, dir: :SE, cx_dir: :E},
+                 {src: 1, dir: :SW, cx_dir: nil},
+                 {src: 3, dir: :S, cx_dir: :S}],
 
-    :cx_lft_a => [{src: :origin, dir: :S, id: :W},
-                  {src: 0, dir: :SE, id: nil},
-                  {src: 1, dir: :S, id: :S},
-                  {src: 1, dir: :NE, id: nil},
-                  {src: 3, dir: :N, id: :N}],
+    :cx_lft_a => [{src: :origin, dir: :S, cx_dir: :W},
+                  {src: 0, dir: :SE, cx_dir: nil},
+                  {src: 1, dir: :S, cx_dir: :S},
+                  {src: 1, dir: :NE, cx_dir: nil},
+                  {src: 3, dir: :N, cx_dir: :N}],
 
-    :cx_lft_b => [{src: :origin, dir: :SE, id: :N},
-                  {src: 0, dir: :S, id: nil},
-                  {src: 1, dir: :SW, id: :W},
-                  {src: 1, dir: :SE, id: nil},
-                  {src: 3, dir: :S, id: :S}],
+    :cx_lft_b => [{src: :origin, dir: :SE, cx_dir: :N},
+                  {src: 0, dir: :S, cx_dir: nil},
+                  {src: 1, dir: :SW, cx_dir: :W},
+                  {src: 1, dir: :SE, cx_dir: nil},
+                  {src: 3, dir: :S, cx_dir: :S}],
 
-    :cx_4_a => [{src: :origin, dir: :SE, id: :N},
-                {src: 0, dir: :S, id: nil},
-                {src: 1, dir: :SW, id: :W},
-                {src: 1, dir: :SE, id: nil},
-                {src: 3, dir: :NE, id: :E},
-                {src: 3, dir: :S, id: :S}],
+    :cx_4_a => [{src: :origin, dir: :SE, cx_dir: :N},
+                {src: 0, dir: :S, cx_dir: nil},
+                {src: 1, dir: :SW, cx_dir: :W},
+                {src: 1, dir: :SE, cx_dir: nil},
+                {src: 3, dir: :NE, cx_dir: :E},
+                {src: 3, dir: :S, cx_dir: :S}],
 
-    :cx_4_b => [{src: :origin, dir: :S, id: :W},
-                {src: 0, dir: :SE, id: nil},
-                {src: 1, dir: :S, id: :S},
-                {src: 1, dir: :NE, id: nil},
-                {src: 3, dir: :N, id: :N},
-                {src: 3, dir: :SE, id: :E}],
+    :cx_4_b => [{src: :origin, dir: :S, cx_dir: :W},
+                {src: 0, dir: :SE, cx_dir: nil},
+                {src: 1, dir: :S, cx_dir: :S},
+                {src: 1, dir: :NE, cx_dir: nil},
+                {src: 3, dir: :N, cx_dir: :N},
+                {src: 3, dir: :SE, cx_dir: :E}],
 
-    :cx_river_mouth => [{src: :origin, dir: :no_go, id: nil},
-                        {src: 0, dir: :N, id: :N}] }
+    :cx_river_mouth => [{src: :origin, dir: :no_go, cx_dir: nil},
+                        {src: 0, dir: :N, cx_dir: :N}] }
 
   RT_ZONE_WIDTH = 8
   RT_ZONE_HEIGHT = 8
@@ -912,12 +917,10 @@ class HexConnector
     template.each do |step|
       src = step[:src]
       dir = step[:dir]
-
       h0 = src == :origin ? {a: start[:a], b: start[:b]} : prior_hexes[src]
       hex = @hex_grid.next_hex(h0,dir)
       prior_hexes << hex
-      connect_points[step[:id]] = hex if [:N, :E, :S, :W].include?(step[:id])
-
+      connect_points[step[:cx_dir]] = hex if [:N, :E, :S, :W].include?(step[:cx_dir])
       @hex_grid.put(hex,:water)
     end
   end
