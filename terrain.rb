@@ -243,7 +243,7 @@ end
 
 
 
-class HexMapGrid
+class HexMap
 
   # Map Constants
 
@@ -251,6 +251,13 @@ class HexMapGrid
   # North to South [0.22].
   HEX_DIM_EW = 40
   HEX_DIM_NS = 22
+
+  OPP_DIRS = { N: :S,
+               NE: :SW,
+               SE: :NW,
+               S: :N,
+               SW: :NE,
+               NW: :SE }
 
   LAND_SYMBOLS = [
     :elev_10,
@@ -338,7 +345,7 @@ class HexMapGrid
   end
 
 
-  # merge data from another HexMapGrid object with this one
+  # merge data from another HexMap object with this one
   def add_data(hex_grid2,mode)
     case mode
     when :rivers
@@ -443,11 +450,16 @@ class HexMapGrid
   end
 
 
+  def opp_dir(dir)
+    OPP_DIRS[dir]
+  end
+
+
 end
 
 
 
-class TerrainMap < HexMapGrid
+class TerrainMap < HexMap
 
   DEFAULT_ELEV_VALUE = :elev_60
 
@@ -519,7 +531,11 @@ end
 
 
 
-class RiverMap < HexMapGrid
+class RiverMap < HexMap
+
+  RIVER_START_EDGE = :S
+
+  attr :river_mouth_hex, :river_topo
 
   def initialize
     super
@@ -538,14 +554,11 @@ class RiverMap < HexMapGrid
     # connect the branching points to each other
     @cx_list.each {|cx| connect_cx(cx)}
 
+    @river = RiverSystem.new(self)
+
     # generate water elevation
     generate_water_elevation
 
-  end
-
-
-  def river_topo
-    @river_topo
   end
 
 
@@ -553,6 +566,7 @@ class RiverMap < HexMapGrid
   # corresponding to a cell in the river topo grid
   def add_connector(topo_cell)
     connector = HexConnector.new(topo_cell,self)
+    @river_mouth_hex = connector.river_mouth_hex if connector.river_mouth_hex != nil
     mark_hexes(:water, connector.get_hexes)
     connector.get_connection_points.each_pair do |dir,hex|
       s = topo_cell[:s]
@@ -884,13 +898,14 @@ class HexConnector
   RT_ZONE_WIDTH = 8
   RT_ZONE_HEIGHT = 8
 
-  attr :topo_grid_cell, :hex_grid, :hexes, :connect_points
+  attr :topo_grid_cell, :hex_grid, :hexes, :connect_points, :river_mouth_hex
 
   def initialize(topo_cell,hex_grid)
     @topo_grid_cell = topo_cell
     @hex_grid = hex_grid
     @hexes = []
     @connect_points = {N: nil, E: nil, S: nil, W: nil}
+    @river_mouth_hex = nil
     build_hexes
   end
 
@@ -923,6 +938,9 @@ class HexConnector
       connect_points[step[:cx_dir]] = hex if [:N, :E, :S, :W].include?(step[:cx_dir])
       @hex_grid.put(hex,:water)
     end
+
+    @river_mouth_hex = start if pattern == :cx_river_mouth
+
   end
 
 
@@ -951,10 +969,70 @@ class HexConnector
     # for the river mouth, use special values
     if pattern == :cx_river_mouth
       aa = aa+1
-      bb = HexMapGrid::HEX_DIM_NS
+      bb = HexMap::HEX_DIM_NS
     end
 
     {a: aa, b: bb}
+  end
+
+
+end
+
+
+
+class RiverSystem
+
+  def initialize(river_map)
+    @river_hex_map = river_map
+    @river_mouth = @river_hex_map.river_mouth_hex
+    @endpoints = []
+    @main_branch = get_branch_data(@river_mouth, RiverMap::RIVER_START_EDGE, :ocean)
+    get_path_lengths
+
+    binding.pry
+  end
+
+
+  def get_branch_data(root, back_direction, source)
+    root[:down_stream] = {a: source[:a], b: source[:b]} if source != :ocean
+    branches = [root]
+    search_dir = [:N, :NE, :SE, :S, :SW, :NW] - [back_direction]
+    search_hexes = {}
+    search_dir.each {|dir| search_hexes[dir] = @river_hex_map.next_hex(root,dir)}
+    branch_stubs = search_hexes.select {|dir,hex| @river_hex_map.get(hex) == :water}
+
+    if branch_stubs == {}
+      root[:is_endpoint] == true
+      @endpoints << root
+    else
+      branch_stubs.each_pair {|dir,hex| branches << get_branch_data(hex, @river_hex_map.opp_dir(dir), root)}
+      branches.flatten!
+      root[:up_stream] = branch_stubs.map {|dir,hex| {a: hex[:a], b: hex[:b]} }
+    end    
+
+    branches
+  end
+
+
+  def get_path_lengths
+    max = 0
+    @endpoints.each do |end_pt|
+      count = 0
+      hx = end_pt
+        until hx == nil
+          count += 1
+          hx = get_downstream(hx)
+        end
+      end_pt[:path_length] = count
+      max = [max,count].max
+    end
+    @max_path_length = max
+  end
+
+
+  def get_downstream(hex)
+    hxx = @main_branch.find {|hx| hx[:a] == hex[:a] && hx[:b] == hex[:b]}
+    hxx[:down_stream]
   end
 
 
@@ -968,7 +1046,7 @@ def select_random_match(key,options_hash)
   mm = options_hash[key]
   match = nil if mm == nil
   match = mm if mm.class == Symbol
-  match = mm[rand(mm.size)] if mm.class == Array
+  match = mm.sample if mm.class == Array
   match
 end
 
