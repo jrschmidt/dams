@@ -982,14 +982,29 @@ end
 
 class RiverSystem
 
+  WATER_ELEVATIONS = [
+    :water_10,
+    :water_20,
+    :water_30,
+    :water_40,
+    :water_50,
+    :water_60,
+    :water_70,
+    :water_80,
+    :water_90,
+    :water_100,
+    :water_110,
+    :water_120 ]
+
+
   def initialize(river_map)
     @river_hex_map = river_map
     @river_mouth = @river_hex_map.river_mouth_hex
     @endpoints = []
     @main_branch = get_branch_data(@river_mouth, RiverMap::RIVER_START_EDGE, :ocean)
     get_path_lengths
+    set_water_elevations
 
-    binding.pry
   end
 
 
@@ -1027,6 +1042,36 @@ class RiverSystem
       max = [max,count].max
     end
     @max_path_length = max
+  end
+
+
+  def get_water_elev_vector
+    ss = WATER_ELEVATIONS.size
+    min_reps = @max_path_length/ss
+    extras = @max_path_length%ss
+    vector = WATER_ELEVATIONS.map {|el| [el]*min_reps}.flatten
+    extras.times do
+      rnd = rand(vector.size)
+      vector.insert(rnd,vector[rnd])
+    end
+    vector
+  end
+
+
+  def set_water_elevations
+    elev = get_water_elev_vector
+    @river_hex_map.put(@river_mouth,WATER_ELEVATIONS[0])
+    @endpoints.each do |end_pt|
+      hx = end_pt
+      p = end_pt[:path_length]
+      until @river_hex_map.get(hx) != :water
+        @river_hex_map.put(hx,elev[p])
+        hx = get_downstream(hx)
+        p -= 1
+      end
+
+    end
+
   end
 
 

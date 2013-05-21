@@ -150,13 +150,17 @@ class ElevationPalette
       "130":"#a03030"
       "140":"#a82232"
       "water":"#a399ff"
+      "waterb":"#8080ff"
       "empty":"#339966"
       "no-data":"#993399" 
       "MARK-PURPLE":"#ff00ff" }
 
   getcolor: (elev) ->
     if elev<0
-      color = @elevationcolors["water"]
+      if elev in [-10,-30,-50,-70,-90,-110,-130]
+        color = @elevationcolors["waterb"]
+      else
+        color = @elevationcolors["water"]
     else
       es = elev.toString()
       if @elevationcolors.hasOwnProperty(es)
