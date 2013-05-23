@@ -260,15 +260,15 @@ class HexMap
                NW: :SE }
 
   LAND_SYMBOLS = [
-    :elev_10,
-    :elev_20,
-    :elev_30,
-    :elev_40,
-    :elev_50,
-    :elev_60,
-    :elev_70,
-    :elev_80,
-    :elev_90,
+    :elev_010,
+    :elev_020,
+    :elev_030,
+    :elev_040,
+    :elev_050,
+    :elev_060,
+    :elev_070,
+    :elev_080,
+    :elev_090,
     :elev_100,
     :elev_110,
     :elev_120,
@@ -277,15 +277,15 @@ class HexMap
 
   WATER_SYMBOLS = [
     :water,
-    :water_10,
-    :water_20,
-    :water_30,
-    :water_40,
-    :water_50,
-    :water_60,
-    :water_70,
-    :water_80,
-    :water_90,
+    :water_010,
+    :water_020,
+    :water_030,
+    :water_040,
+    :water_050,
+    :water_060,
+    :water_070,
+    :water_080,
+    :water_090,
     :water_100,
     :water_110,
     :water_120,
@@ -293,12 +293,14 @@ class HexMap
     :water_140,
     :zone ]
 
+
   def initialize
     @grid = []
     fill(:no_data)
   end
 
 
+# TODO Why isn't this giving us the 'repeat array' problem? We should change it anyway.
   def fill(value)
     0.upto(HEX_DIM_EW) {|i| @grid[i] = [value]*(HEX_DIM_NS+1)}
   end
@@ -345,8 +347,44 @@ class HexMap
   end
 
 
+  def hex_find_all(value)
+    hexes = []
+    @grid.each_index do |a|
+      @grid[a].each_index do |b|
+        hexes << {a: a, b: b} if @grid[a][b] == value
+      end
+    end
+    hexes
+  end
+
+
+  # returns all hexes adjacent to a set of hexes that are not part of that set
+  def all_adjacent(hexes)
+    nn = []
+    hexes.each do |hx|
+      [:N,:NE,:SE,:S,:SW,:NW].each do |dir|
+        hxx = next_hex(hx,dir)
+        nn << hxx unless nn.include?(hxx)
+      end
+    end
+    adj = nn - hexes
+    adj
+  end
+
+
+  # returns all hexes adjacent to a single hex
+  def adj_hexes(hex)
+    adj = []
+    [:N,:NE,:SE,:S,:SW,:NW].each do |dir|
+      hxx = next_hex(hex,dir)
+      adj << hxx unless hxx == nil
+    end
+    adj
+  end
+
+
   # merge data from another HexMap object with this one
-  def add_data(hex_grid2,mode)
+  def merge_data(hex_grid2,mode)
     case mode
     when :rivers
       symbols = WATER_SYMBOLS
@@ -461,21 +499,19 @@ end
 
 class TerrainMap < HexMap
 
-  DEFAULT_ELEV_VALUE = :elev_60
-
   attr :rivers
 
   def initialize
   super
-  fill(:default_base_elev)
   @rivers = RiverMap.new
-  add_data(@rivers,:rivers)
+  merge_data(@rivers,:rivers)
+  build_terrain_data
   end
 
 
-  def fill(value)
-    value = DEFAULT_ELEV_VALUE if value == :default_base_elev
-    super(value)
+  def build_terrain_data
+    @fill_zone = FillBoundary.new(self)
+    @fill_zone.fill until @fill_zone.finished
   end
 
 
@@ -491,29 +527,29 @@ class TerrainMap < HexMap
   # encode elevation values to a one-character code
   def encode(elev)
     values = {
-      elev_10: "a",
-      elev_20: "b",
-      elev_30: "c",
-      elev_40: "d",
-      elev_50: "e",
-      elev_60: "f",
-      elev_70: "g",
-      elev_80: "h",
-      elev_90: "i",
+      elev_010: "a",
+      elev_020: "b",
+      elev_030: "c",
+      elev_040: "d",
+      elev_050: "e",
+      elev_060: "f",
+      elev_070: "g",
+      elev_080: "h",
+      elev_090: "i",
       elev_100: "j",
       elev_110: "k",
       elev_120: "l",
       elev_130: "m",
       elev_140: "n",
-      water_10: "A",
-      water_20: "B",
-      water_30: "C",
-      water_40: "D",
-      water_50: "E",
-      water_60: "F",
-      water_70: "G",
-      water_80: "H",
-      water_90: "I",
+      water_010: "A",
+      water_020: "B",
+      water_030: "C",
+      water_040: "D",
+      water_050: "E",
+      water_060: "F",
+      water_070: "G",
+      water_080: "H",
+      water_090: "I",
       water_100: "J",
       water_110: "K",
       water_120: "L",
@@ -531,11 +567,14 @@ end
 
 
 
+# A HexMap subclass with only the river hexes filled, to be later superimposed
+# upon the main terrain map.
+
 class RiverMap < HexMap
 
   RIVER_START_EDGE = :S
 
-  attr :river_mouth_hex, :river_topo
+  attr :river_mouth_hex, :river_topo, :river_hexes
 
   def initialize
     super
@@ -554,7 +593,12 @@ class RiverMap < HexMap
     # connect the branching points to each other
     @cx_list.each {|cx| connect_cx(cx)}
 
+    @river_hexes = hex_find_all(:water)
+
     @river = RiverSystem.new(self)
+
+
+# FIXME Probably put the RiverSystem.new statement inside the generate_water_elevation method:
 
     # generate water elevation
     generate_water_elevation
@@ -980,18 +1024,20 @@ end
 
 
 
+# A class for data about the rivers
+
 class RiverSystem
 
   WATER_ELEVATIONS = [
-    :water_10,
-    :water_20,
-    :water_30,
-    :water_40,
-    :water_50,
-    :water_60,
-    :water_70,
-    :water_80,
-    :water_90,
+    :water_010,
+    :water_020,
+    :water_030,
+    :water_040,
+    :water_050,
+    :water_060,
+    :water_070,
+    :water_080,
+    :water_090,
     :water_100,
     :water_110,
     :water_120 ]
@@ -1063,21 +1109,94 @@ class RiverSystem
     @river_hex_map.put(@river_mouth,WATER_ELEVATIONS[0])
     @endpoints.each do |end_pt|
       hx = end_pt
-      p = end_pt[:path_length]
+      p = end_pt[:path_length]-1
       until @river_hex_map.get(hx) != :water
         @river_hex_map.put(hx,elev[p])
         hx = get_downstream(hx)
         p -= 1
       end
-
     end
-
   end
 
 
   def get_downstream(hex)
     hxx = @main_branch.find {|hx| hx[:a] == hex[:a] && hx[:b] == hex[:b]}
     hxx[:down_stream]
+  end
+
+
+end
+
+
+
+# This class represents the set of all hexes which are empty, but are adjacent
+# to a hex that has data. When the fill method is finished, it returns the new
+# fill boundary zone.
+
+class FillBoundary
+
+
+  NEXT_HIGHER = {
+    :elev_010 => :elev_020,
+    :elev_020 => :elev_030,
+    :elev_030 => :elev_040,
+    :elev_040 => :elev_050,
+    :elev_050 => :elev_060,
+    :elev_060 => :elev_070,
+    :elev_070 => :elev_080,
+    :elev_080 => :elev_090,
+    :elev_090 => :elev_100,
+    :elev_100 => :elev_110,
+    :elev_110 => :elev_120,
+    :elev_120 => :elev_130,
+    :elev_130 => :elev_140,
+    :elev_140 => :elev_140,
+    :water_010 => :elev_020,
+    :water_020 => :elev_030,
+    :water_030 => :elev_040,
+    :water_040 => :elev_050,
+    :water_050 => :elev_060,
+    :water_060 => :elev_070,
+    :water_070 => :elev_080,
+    :water_080 => :elev_090,
+    :water_090 => :elev_100,
+    :water_100 => :elev_110,
+    :water_110 => :elev_120,
+    :water_120 => :elev_130,
+    :water_130 => :elev_140,
+    :water_140 => :elev_140 }
+
+
+  def initialize(map)
+    @map = map
+    @zone = build_init_zone
+    fill
+  end
+
+
+  def build_init_zone
+    edge = @map.rivers.river_hexes
+    search = @map.all_adjacent(edge)
+    zone = search.find_all {|hex| @map.get(hex) == :no_data}
+    zone
+  end
+
+
+  def fill
+    hi_elev = @zone.map {|hex| higher_than_neighbors(hex)}
+    @zone.each_index {|i| @map.put(@zone[i], hi_elev[i]) }
+  end
+
+
+  # returns the elevation value one level higher than the maximimum of the
+  # elevations of neighboring hexes
+  def higher_than_neighbors(hex)
+    @map.adj_hexes(hex).map {|adj| NEXT_HIGHER[@map.get(adj)]}.compact.max
+  end
+
+
+  def finished
+    true
   end
 
 
