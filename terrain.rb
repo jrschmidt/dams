@@ -524,8 +524,11 @@ class TerrainMap < HexMap
   end
 
 
+  SHOW_WATER = :solid
+
   # encode elevation values to a one-character code
   def encode(elev)
+
     values = {
       elev_010: "a",
       elev_020: "b",
@@ -559,6 +562,7 @@ class TerrainMap < HexMap
       zone: "Z" }
     ch = values.fetch(elev,:no_data)
     ch = "x" if ch == :no_data
+    ch = "A" if ch.between?("A","N") && SHOW_WATER == :solid
     ch
   end
 
@@ -1170,21 +1174,27 @@ class FillBoundary
   def initialize(map)
     @map = map
     @zone = build_init_zone
-    fill
   end
 
 
   def build_init_zone
-    edge = @map.rivers.river_hexes
+    hexes = @map.rivers.river_hexes
+    zzn = get_edge_zone(hexes)
+    zzn
+  end
+
+
+  def get_edge_zone(edge)
     search = @map.all_adjacent(edge)
-    zone = search.find_all {|hex| @map.get(hex) == :no_data}
-    zone
+    zzn = search.find_all {|hex| @map.get(hex) == :no_data}
+    zzn
   end
 
 
   def fill
     hi_elev = @zone.map {|hex| higher_than_neighbors(hex)}
     @zone.each_index {|i| @map.put(@zone[i], hi_elev[i]) }
+    @zone = get_edge_zone(@zone)
   end
 
 
@@ -1196,7 +1206,8 @@ class FillBoundary
 
 
   def finished
-    true
+    fff = @zone == [] ? true : false
+    fff
   end
 
 
