@@ -2,20 +2,9 @@ require 'rubygems'
 
 require 'sinatra'
 
-require 'coffee-script'
-
-require 'pry'
-
-
 get '/' do
   erb :index
 end
-
-
-get '/javascripts/dams.js' do
-  coffee :dams
-end
-
 
 
 class TopoGrid
@@ -53,7 +42,7 @@ end
 
 
 class SquareTopoGrid < TopoGrid
-  
+
   attr :m, :n
 
   def initialize(m,n)
@@ -273,7 +262,7 @@ class HexMap
     :elev_110,
     :elev_120,
     :elev_130,
-    :elev_140 ] 
+    :elev_140 ]
 
   WATER_SYMBOLS = [
     :water,
@@ -1073,7 +1062,7 @@ class RiverSystem
       branch_stubs.each_pair {|dir,hex| branches << get_branch_data(hex, @river_hex_map.opp_dir(dir), root)}
       branches.flatten!
       root[:up_stream] = branch_stubs.map {|dir,hex| {a: hex[:a], b: hex[:b]} }
-    end    
+    end
 
     branches
   end
@@ -1243,5 +1232,3 @@ end
 def get_n
   @r_topo.n
 end
-
-
